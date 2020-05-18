@@ -43,11 +43,13 @@ cdb_read_attribute(scsicmd *cmd, uint16_t id, uint16_t length)
 {
 	memset(*cmd, 0, SCSI_CMD_LEN);
 
-	*cmd[CDB_OPCODE]		= OP_READ_ATTRIBUTE; 
-	*cmd[CDB_RDATTR_ID_MSB]		= (id >> 8) & 0xff;
-	*cmd[CDB_RDATTR_ID_LSB]		= id & 0xff;
-	*cmd[CDB_RDATTR_ALLOCLEN_LSB]	= length;
+	(*cmd)[CDB_OPCODE]		= OP_READ_ATTRIBUTE; 
+	(*cmd)[CDB_RDATTR_ID_MSB]		= (id >> 8) & 0xff;
+	(*cmd)[CDB_RDATTR_ID_LSB]		= id & 0xff;
+	(*cmd)[CDB_RDATTR_ALLOCLEN_LSB]	= length;
 }
+
+
 
 void
 mam_read_attribute_1(uint16_t id) 
