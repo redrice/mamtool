@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <string.h>
 
@@ -21,21 +22,44 @@ struct uscsi_dev dev;
 #define RDATTR_ATTRHEAD_LEN	5	/* every attribute has 5 byte header */
 #define RDATTR_HEADONLY_LEN	RDATTR_LISTHEAD_LEN+RDATTR_ATTRHEAD_LEN	
 
+#define RDATTR_ATTRHEAD_ID_MSB		0
+#define RDATTR_ATTRHEAD_ID_LSB		1
+#define RDATTR_ATTRHEAD_FORMAT		2
 #define RDATTR_ATTRHEAD_ATTRLEN_MSB	3
 #define RDATTR_ATTRHEAD_ATTRLEN_LSB	4
+
+#define ATTR_FORMAT_MASK		0x03
+#define ATTR_RO_MASK			0x80
 
 #define ATTR_TYPE_ASCII		0
 #define ATTR_TYPE_BINARY	1
 #define ATTR_TYPE_TEXT		2
 
+struct mam_attribute {
+	uint16_t id;
+	uint16_t length;
+	uint8_t type;
+	bool ro;
+	void *value;
+};
+
 static inline uint16_t
 attribute_lenght_from_head(uint8_t *buf)
 {
-	uint16_t l;
-	l = (buf[RDATTR_ATTRHEAD_ATTRLEN_MSB] << 8) 
+	return (buf[RDATTR_ATTRHEAD_ATTRLEN_MSB] << 8) 
 	    | buf[RDATTR_ATTRHEAD_ATTRLEN_LSB];
+}
 
-	return l;
+static inline uint8_t
+attribute_type_from_head(uint8_t *buf)
+{
+	return (buf[RDATTR_ATTRHEAD_FORMAT] & ATTR_FORMAT_MASK);
+}
+
+static inline bool
+attribute_ro_from_head(uint8_t *buf)
+{
+	return (buf[RDATTR_ATTRHEAD_FORMAT] & ATTR_RO_MASK);
 }
 
 void
@@ -44,18 +68,16 @@ cdb_read_attribute(scsicmd *cmd, uint16_t id, uint16_t length)
 	memset(*cmd, 0, SCSI_CMD_LEN);
 
 	(*cmd)[CDB_OPCODE]		= OP_READ_ATTRIBUTE; 
-	(*cmd)[CDB_RDATTR_ID_MSB]		= (id >> 8) & 0xff;
-	(*cmd)[CDB_RDATTR_ID_LSB]		= id & 0xff;
+	(*cmd)[CDB_RDATTR_ID_MSB]	= (id >> 8) & 0xff;
+	(*cmd)[CDB_RDATTR_ID_LSB]	= id & 0xff;
 	(*cmd)[CDB_RDATTR_ALLOCLEN_LSB]	= length;
 }
 
-
-
-void
-mam_read_attribute_1(uint16_t id) 
+int
+mam_read_attribute_1(struct mam_attribute *ma, uint16_t id) 
 {
+	int error;
 	uint8_t i;
-	int rv;
 	uint8_t buf[256];
 	uint16_t attrlen;
 
@@ -67,28 +89,28 @@ mam_read_attribute_1(uint16_t id)
 
 	cdb_read_attribute(&cmd, id, RDATTR_HEADONLY_LEN);
 
-	rv = uscsi_command(SCSI_READCMD, &dev, cmd, 16, &buf,
+	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, &buf,
 	    RDATTR_HEADONLY_LEN, 10000, NULL);
 	
-	printf("rv: %d\n", rv)	;
-
-	for(i = 0; i < 255; i++) {
-		printf("%x ", buf[i]);
-	}
-	printf("\n");
+	if (error)
+		return error;
 
 	attrlen = attribute_lenght_from_head(&buf[RDATTR_LISTHEAD_LEN]);
-	printf("Attribute length: %d\n", attrlen); 
 
 	cdb_read_attribute(&cmd, id, RDATTR_HEADONLY_LEN+attrlen);
 
-	rv = uscsi_command(SCSI_READCMD, &dev, cmd, 16, &buf,
+	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, &buf,
 	    RDATTR_HEADONLY_LEN+attrlen, 10000, NULL);
+
+	if (error)
+		return error;
 
 	for(i = 0; i < 255; i++) {
 		printf("%x ", buf[i]);
 	}
 	printf("\n");
+
+	return 0;
 
 }
 
@@ -98,6 +120,8 @@ main(int argc, char *argv[])
 	int error;
 
 	struct uscsi_addr saddr;
+
+	struct mam_attribute ma;
 
 	dev.dev_name = strdup(default_tape);
 	printf("Opening device %s\n", dev.dev_name);
@@ -136,7 +160,7 @@ main(int argc, char *argv[])
 
 	printf("\n");
 
-	mam_read_attribute_1(0x400);
+	mam_read_attribute_1(&ma, 0x400);
 
 	uscsi_close(&dev);
 	return 0;
