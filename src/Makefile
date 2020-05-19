@@ -1,5 +1,5 @@
-CFLAGS=-Wall -pedantic -g -DUSCSI_SCSIPI -DSCSI
-LDFLAGS=
+CFLAGS=-Wall -pedantic -g -DUSCSI_SCSIPI -DSCSI -I/usr/pkg/include
+LDFLAGS=-Wl,-R/usr/pkg/lib -L/usr/pkg/lib -lgc
 
 all : mamtool
 
