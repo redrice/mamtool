@@ -75,11 +75,30 @@ attribute_id_to_string(uint16_t id)
 	static char unknownstr[UNKIDSTRLEN];
 
 	switch (id) {
+	/* Device type attributes */
 	case 0x0000: return "REMAINING CAPACITY IN PARTITION";
 	case 0x0001: return "MAXIMUM CAPACITY IN PARTITION";
 	case 0x0002: return "TAPEALERT FLAGS";
 	case 0x0003: return "LOAD COUNT";
-
+	case 0x0004: return "MAM SPACE REMAINING";
+	case 0x0005: return "ASSIGNING ORGANIZATION";
+	case 0x0006: return "FORMATTED DENSITY CODE";
+	case 0x0007: return "INITIALIZATION COUNT";
+	case 0x0008: return "VOLUME IDENTIFIER";
+	case 0x0009: return "VOLUME CHANGE REFERENCE";
+	case 0x020A: return "DEVICE VENDOR/SERIAL NUMBER AT LAST LOAD";
+	case 0x020B: return "DEVICE VENDOR/SERIAL NUMBER AT LOAD-1";
+	case 0x020C: return "DEVICE VENDOR/SERIAL NUMBER AT LOAD-2";
+	case 0x020D: return "DEVICE VENDOR/SERIAL NUMBER AT LOAD-3";
+	case 0x0220: return "TOTAL MBYTES WRITTEN IN MEDIUM LIFE";
+	case 0x0221: return "TOTAL MBYTES READ IN MEDIUM LIFE";
+	case 0x0222: return "TOTAL MBYTES WRITTEN IN CURRENT/LAST LOAD";
+	case 0x0223: return "TOTAL MBYTES READ IN CURRENT/LAST LOAD";
+	case 0x0224: return "LOGICAL POSITION OF FIRST ENCRYPTED BLOCK";
+	case 0x0225: return "LOGICAL POSITION OF FIRST UNENCRYPTED BLOCK AFTER THE FIRST ENCRYPTED BLOCK";
+	case 0x0340: return "MEDIUM USAGE HISTORY";
+	case 0x0341: return "PARTITION USAGE HISTORY";
+	/* Medium type attributes */
 	case 0x0400: return "MEDIUM MANUFACTURER";
 	case 0x0401: return "MEDIUM SERIAL NUMBER";
 	case 0x0402: return "MEDIUM LENGTH";
@@ -92,7 +111,7 @@ attribute_id_to_string(uint16_t id)
 	case 0x0409: return "MEDIUM TYPE INFORMATION";
 	case 0x040A: return "NUMERIC MEDIUM SERIAL NUMBER";
 	case 0x040B: return "SUPPORTED DENSITY CODES";
-
+	/* Host type attributes */
 	case 0x0800: return "APPLICATION VENDOR";
 	case 0x0801: return "APPLICATION NAME";
 	case 0x0802: return "APPLICATION VERSION";
@@ -100,6 +119,14 @@ attribute_id_to_string(uint16_t id)
 	case 0x0804: return "DATE AND TIME LAST WRITTEN";
 	case 0x0805: return "TEXT LOCALIZATION IDENTIFIER";
 	case 0x0806: return "BARCODE";
+	case 0x0807: return "OWNING HOST TEXTUAL NAME";
+	case 0x0808: return "MEDIA POOL";
+	case 0x0809: return "PARTITION USER TEXT LABEL";
+	case 0x080A: return "LOAD/UNLOAD AT PARTITION";
+	case 0x080B: return "APPLICATION FORMAT VERSION";
+	case 0x080C: return "VOLUME COHERENCY INFORMATION";
+	case 0x0820: return "MEDIUM GLOBALLY UNIQUE IDENTIFIER";
+	case 0x0821: return "MEDIA POOL GLOBALLY UNIQUE IDENTIFIER";
 	}
 
 	snprintf(unknownstr, UNKIDSTRLEN,
@@ -350,6 +377,8 @@ main(int argc, char *argv[])
 	mam_read_attribute_1(&ma, 0x001);
 	attribute_print_simple(&ma);
 	mam_read_attribute_1(&ma, 0x002);
+	attribute_print_simple(&ma);
+	mam_read_attribute_1(&ma, 0x006);
 	attribute_print_simple(&ma);
 	mam_read_attribute_1(&ma, 0x400);
 	attribute_print_simple(&ma);
