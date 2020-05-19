@@ -5,10 +5,9 @@
 #include <string.h>
 
 #include <gc/gc.h>
+#include <utlist.h>
 
 #include "uscsilib.h"
-
-static const char *default_tape = "/dev/enrst0";
 
 struct uscsi_dev dev;
 
@@ -17,6 +16,16 @@ struct uscsi_dev dev;
 #define CDB_RDATTR_ID_MSB	8
 #define CDB_RDATTR_ID_LSB	9
 #define CDB_RDATTR_ALLOCLEN_LSB	13
+
+#define CDB_RDATTR_SVCACTION_AVAL	0x0	/* attribute values */
+#define CDB_RDATTR_SVCACTION_ALIST	0x1	/* attribute list */
+#define CDB_RDATTR_SVCACTION_LVLIST	0x2	/* logical volume list */
+#define CDB_RDATTR_SVCACTION_PRLIST	0x3	/* partition list */
+/* my LTO-4 drive does not support this operation */
+#define CDB_RDATTR_SVCACTION_SALIST	0x5	/* supported attributes list */
+
+#define ATTR_LIST_AVAILABLE CDB_RDATTR_SVCACTION_ALIST
+#define ATTR_LIST_SUPPORTED CDB_RDATTR_SVCACTION_SALIST
 
 #define OP_READ_ATTRIBUTE	0x8C
 #define OP_WRITE_ATTRIBUTE	0x8D
@@ -45,6 +54,16 @@ struct mam_attribute {
 	bool ro;
 	uint8_t *value;
 };
+
+struct mam_id_list {
+	uint16_t id;
+
+	struct mam_id_list *next;
+};
+
+static const char *default_tape = "/dev/enrst0";
+
+bool flag_verbose = true; /* XXX */
 
 static char const *
 attribute_format_to_string(uint8_t format)
@@ -127,6 +146,10 @@ attribute_id_to_string(uint16_t id)
 	case 0x080C: return "VOLUME COHERENCY INFORMATION";
 	case 0x0820: return "MEDIUM GLOBALLY UNIQUE IDENTIFIER";
 	case 0x0821: return "MEDIA POOL GLOBALLY UNIQUE IDENTIFIER";
+
+	/* Vendor specific / non-standard */
+	case 0x1000: return "UNIQUE CARTRIDGE IDENTITY";
+	case 0x1001: return "ALTERNATIVE UNIQUE CARTRIDGE IDENTITY";
 	}
 
 	snprintf(unknownstr, UNKIDSTRLEN,
@@ -188,7 +211,6 @@ attribute_set_value(struct mam_attribute *ma, uint8_t *buf)
 	return 0;
 }
 
-
 static inline uint16_t
 bswap16_to_host(uint16_t v)
 {
@@ -212,7 +234,8 @@ if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 static char const *
 attribute_value_to_string(struct mam_attribute *ma)
 {
-#define AVSTRLEN 30 
+#define AVSTRLEN 255
+	uint8_t i, cw;
 	char *avstr;
 
 	if ((ma->format) == ATTR_FORMAT_BINARY) {
@@ -228,12 +251,16 @@ attribute_value_to_string(struct mam_attribute *ma)
 			break;
 		case 4:
 			snprintf(avstr, AVSTRLEN, "%"PRIu32, bswap32_to_host(*(uint32_t *)(ma->value)));
-			break; 
+			break;
 		case 8:
 			snprintf(avstr, AVSTRLEN, "%"PRIu64, bswap64_to_host(*(uint64_t *)(ma->value)));
 			break;
 		default: /* XXX */
-			snprintf(avstr, AVSTRLEN, "???");
+			cw = 0;
+			for (i = 0; i < ma->length; i++)
+			{
+				cw += snprintf(avstr+cw, AVSTRLEN-cw, "%02X", ma->value[i]);
+			}
 		}
 	} else
 		avstr = (char *) ma->value;
@@ -263,11 +290,21 @@ attribute_new(struct mam_attribute *ma, uint8_t *buf)
 }
 
 void
+cdb_list_attributes(scsicmd *cmd, uint8_t state, uint8_t length)
+{
+	memset(*cmd, 0, SCSI_CMD_LEN);
+
+	(*cmd)[CDB_OPCODE]		= OP_READ_ATTRIBUTE;
+	(*cmd)[CDB_RDATTR_SVCACTION]	= state;
+	(*cmd)[CDB_RDATTR_ALLOCLEN_LSB]	= length;
+}
+
+void
 cdb_read_attribute(scsicmd *cmd, uint16_t id, uint16_t length)
 {
 	memset(*cmd, 0, SCSI_CMD_LEN);
 
-	(*cmd)[CDB_OPCODE]		= OP_READ_ATTRIBUTE; 
+	(*cmd)[CDB_OPCODE]		= OP_READ_ATTRIBUTE;
 	(*cmd)[CDB_RDATTR_ID_MSB]	= (id >> 8) & 0xff;
 	(*cmd)[CDB_RDATTR_ID_LSB]	= id & 0xff;
 	(*cmd)[CDB_RDATTR_ALLOCLEN_LSB]	= length;
@@ -280,11 +317,9 @@ mam_read_attribute_1(struct mam_attribute *ma, uint16_t id)
 	//uint8_t i;
 	uint8_t buf[256];
 	uint8_t *bp;
-
 	scsicmd cmd;
 
 	memset(buf, 0, sizeof(buf));
-
 
 	cdb_read_attribute(&cmd, id, RDATTR_HEADONLY_LEN);
 
@@ -325,15 +360,60 @@ mam_read_attribute_1(struct mam_attribute *ma, uint16_t id)
 }
 
 int
+mam_list_attributes(uint8_t state)
+{
+	int error;
+	uint8_t i;
+	uint8_t *buf;
+	uint16_t *bp;
+	uint32_t bllen;
+	scsicmd cmd;
+
+	struct mam_attribute ma;
+
+	buf = GC_MALLOC(RDATTR_LISTHEAD_LEN);
+	//memset(buf, 0, RDATTR_LISTHEAD_LEN); // cleared by gc
+
+	cdb_list_attributes(&cmd, state, RDATTR_LISTHEAD_LEN);
+	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
+	    RDATTR_LISTHEAD_LEN, 10000, NULL);
+
+	if (error)
+		return error;
+
+	bllen = bswap32_to_host(*((uint32_t *) buf));
+
+	buf = GC_MALLOC(RDATTR_LISTHEAD_LEN+bllen);
+
+	cdb_list_attributes(&cmd, state, RDATTR_LISTHEAD_LEN+bllen);
+	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
+	    RDATTR_LISTHEAD_LEN+bllen, 10000, NULL);
+
+	bp = (uint16_t *)(buf+4);
+
+	//
+	for (i = 0; i < (bllen/2); i++) {
+		mam_read_attribute_1(&ma, bswap16_to_host(*(bp+i)));
+		attribute_print_simple(&ma);
+	}
+
+	if (error)
+		return error;
+	
+	return 0;
+}
+
+int
 main(int argc, char *argv[])
 {
 	int error;
 	struct uscsi_addr saddr;
-	struct mam_attribute ma;
+	//struct mam_attribute ma;
 
 	GC_INIT();
 
-	uscsilib_verbose = 1;
+	if (flag_verbose)
+		uscsilib_verbose = 1;
 
 	dev.dev_name = strdup(default_tape);
 	printf("Opening device %s\n", dev.dev_name);
@@ -372,6 +452,9 @@ main(int argc, char *argv[])
 
 	printf("\n");
 
+	mam_list_attributes(ATTR_LIST_AVAILABLE);
+//	mam_list_attributes(ATTR_LIST_SUPPORTED);
+	/*
 	mam_read_attribute_1(&ma, 0x000);
 	attribute_print_simple(&ma);
 	mam_read_attribute_1(&ma, 0x001);
@@ -391,9 +474,11 @@ main(int argc, char *argv[])
 	mam_read_attribute_1(&ma, 0x404);
 	attribute_print_simple(&ma);
 	mam_read_attribute_1(&ma, 0x405);
+	attribute_print_simple(&ma); 
+	mam_read_attribute_1(&ma, 0x1000);
 	attribute_print_simple(&ma);
-	mam_read_attribute_1(&ma, 0x406);
-	attribute_print_simple(&ma);
+	mam_read_attribute_1(&ma, 0x1001);
+	attribute_print_simple(&ma);*/
 
 	uscsi_close(&dev);
 	return 0;
