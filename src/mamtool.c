@@ -9,8 +9,6 @@
 
 #include "uscsilib.h"
 
-struct uscsi_dev dev;
-
 #define CDB_OPCODE		0
 #define CDB_RDATTR_SVCACTION	1 
 #define CDB_RDATTR_ID_MSB	8
@@ -60,6 +58,8 @@ struct mam_id_list {
 
 	struct mam_id_list *next;
 };
+
+struct uscsi_dev dev;
 
 static const char *default_tape = "/dev/enrst0";
 
@@ -271,7 +271,8 @@ attribute_value_to_string(struct mam_attribute *ma)
 void
 attribute_print_simple(struct mam_attribute *ma)
 {
-	printf("%s (%s, %d bytes, %s): %s\n",
+	printf("%x %s (%s, %d bytes, %s):%s\n",
+		ma->id,
 		attribute_id_to_string(ma->id),
 		attribute_format_to_string(ma->format),
 		ma->length,
@@ -404,18 +405,13 @@ mam_list_attributes(uint8_t state)
 }
 
 int
-main(int argc, char *argv[])
-{
+mam_scsi_device_open(char *dev_name) {
+
 	int error;
+
 	struct uscsi_addr saddr;
-	//struct mam_attribute ma;
 
-	GC_INIT();
-
-	if (flag_verbose)
-		uscsilib_verbose = 1;
-
-	dev.dev_name = strdup(default_tape);
+	dev.dev_name = dev_name;
 	printf("Opening device %s\n", dev.dev_name);
 
 	error = uscsi_open(&dev);
@@ -424,7 +420,6 @@ main(int argc, char *argv[])
 		strerror(error));
 		exit(1);
 	}
-
 
 	error = uscsi_check_for_scsi(&dev);
 	if (error) {
@@ -452,35 +447,47 @@ main(int argc, char *argv[])
 
 	printf("\n");
 
+	return error;
+}
+
+
+void
+mam_scsi_device_close()
+{
+	uscsi_close(&dev);
+}
+
+int
+main(int argc, char *argv[])
+{
+	int error;
+	char *dev_name;
+	//struct mam_attribute ma;
+
+	GC_INIT();
+
+//	while ((flag = getopt(argc, argv, "rf:v")) != -1) {
+
+	if (flag_verbose)
+		uscsilib_verbose = 1;
+
+	dev_name = GC_strdup(default_tape);
+	error = mam_scsi_device_open(dev_name);
+
+	if (error) {
+		fprintf(stderr, "Problem %x opening SCSI device %s\n",
+		    error, dev_name);
+		exit(1);
+	}
+
 	mam_list_attributes(ATTR_LIST_AVAILABLE);
 //	mam_list_attributes(ATTR_LIST_SUPPORTED);
 	/*
 	mam_read_attribute_1(&ma, 0x000);
-	attribute_print_simple(&ma);
-	mam_read_attribute_1(&ma, 0x001);
-	attribute_print_simple(&ma);
-	mam_read_attribute_1(&ma, 0x002);
-	attribute_print_simple(&ma);
-	mam_read_attribute_1(&ma, 0x006);
-	attribute_print_simple(&ma);
-	mam_read_attribute_1(&ma, 0x400);
-	attribute_print_simple(&ma);
-	mam_read_attribute_1(&ma, 0x401);
-	attribute_print_simple(&ma);
-	mam_read_attribute_1(&ma, 0x402);
-	attribute_print_simple(&ma);
-	mam_read_attribute_1(&ma, 0x403);
-	attribute_print_simple(&ma);
-	mam_read_attribute_1(&ma, 0x404);
-	attribute_print_simple(&ma);
-	mam_read_attribute_1(&ma, 0x405);
-	attribute_print_simple(&ma); 
-	mam_read_attribute_1(&ma, 0x1000);
-	attribute_print_simple(&ma);
-	mam_read_attribute_1(&ma, 0x1001);
 	attribute_print_simple(&ma);*/
 
-	uscsi_close(&dev);
+	mam_scsi_device_close();
+
 	return 0;
 
 }
