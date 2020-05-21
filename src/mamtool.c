@@ -235,7 +235,7 @@ static char const *
 attribute_value_to_string(struct mam_attribute *ma)
 {
 #define AVSTRLEN 255
-	uint8_t i, cw;
+	uint16_t i, cw;
 	char *avstr;
 
 	if ((ma->format) == ATTR_FORMAT_BINARY) {
@@ -315,34 +315,28 @@ int
 mam_read_attribute_1(struct mam_attribute *ma, uint16_t id) 
 {
 	int error;
-	//uint8_t i;
-	uint8_t buf[256];
-	uint8_t *bp;
+	uint8_t *buf;
 	scsicmd cmd;
 
-	memset(buf, 0, sizeof(buf));
-
+	buf = GC_MALLOC(RDATTR_HEADONLY_LEN);
 	cdb_read_attribute(&cmd, id, RDATTR_HEADONLY_LEN);
-
-	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, &buf,
+	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
 	    RDATTR_HEADONLY_LEN, 10000, NULL);
 	
 	if (error)
 		return error;
 
-	bp = buf + RDATTR_LISTHEAD_LEN;
-
-	attribute_new(ma, bp);
+	attribute_new(ma, buf + RDATTR_LISTHEAD_LEN);
 
 	cdb_read_attribute(&cmd, id, RDATTR_HEADONLY_LEN+(ma->length));
-
-	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, &buf,
+	buf = GC_MALLOC(RDATTR_HEADONLY_LEN+(ma->length));
+	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
 	    RDATTR_HEADONLY_LEN+(ma->length), 10000, NULL);
 
 	if (error)
 		return error;
 
-	attribute_set_value(ma, bp);
+	attribute_set_value(ma, buf + RDATTR_LISTHEAD_LEN);
 
 	if (error)
 		return error;
@@ -350,30 +344,25 @@ mam_read_attribute_1(struct mam_attribute *ma, uint16_t id)
 	if (ma->id != id)
 		return EFAULT;
 
-
-//	for(i = 0; i < 255; i++) {
-//		printf("%x ", buf[i]);
-//	}
-//	printf("\n");
-
 	return 0;
 
 }
 
+/* XXX: ugly double pointer */
 int
-mam_list_attributes(uint8_t state)
+mam_list_attribute_ids(struct mam_id_list **list, uint8_t state)
 {
 	int error;
-	uint8_t i;
+	uint16_t i;
 	uint8_t *buf;
 	uint16_t *bp;
 	uint32_t bllen;
 	scsicmd cmd;
 
-	struct mam_attribute ma;
+	struct mam_id_list *lentry;
 
 	buf = GC_MALLOC(RDATTR_LISTHEAD_LEN);
-	//memset(buf, 0, RDATTR_LISTHEAD_LEN); // cleared by gc
+	assert(buf != NULL);
 
 	cdb_list_attributes(&cmd, state, RDATTR_LISTHEAD_LEN);
 	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
@@ -385,17 +374,18 @@ mam_list_attributes(uint8_t state)
 	bllen = bswap32_to_host(*((uint32_t *) buf));
 
 	buf = GC_MALLOC(RDATTR_LISTHEAD_LEN+bllen);
+	assert (buf != NULL);
 
 	cdb_list_attributes(&cmd, state, RDATTR_LISTHEAD_LEN+bllen);
 	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
 	    RDATTR_LISTHEAD_LEN+bllen, 10000, NULL);
 
-	bp = (uint16_t *)(buf+4);
+	bp = (uint16_t *)(buf+RDATTR_LISTHEAD_LEN);
 
-	//
-	for (i = 0; i < (bllen/2); i++) {
-		mam_read_attribute_1(&ma, bswap16_to_host(*(bp+i)));
-		attribute_print_simple(&ma);
+	for (i = 0; i < bllen/2; i++) {
+		lentry = GC_MALLOC(sizeof(struct mam_id_list));
+		lentry->id = bswap16_to_host(*(bp+i));
+		LL_APPEND(*list, lentry);
 	}
 
 	if (error)
@@ -457,16 +447,34 @@ mam_scsi_device_close()
 	uscsi_close(&dev);
 }
 
+void
+tool_list()
+{
+	int error;
+	struct mam_id_list *aid_list, *aid_entry;
+	struct mam_attribute ma;
+
+	aid_list = NULL;
+
+	mam_list_attribute_ids(&aid_list, ATTR_LIST_AVAILABLE);
+
+	LL_FOREACH(aid_list, aid_entry) {
+		error = mam_read_attribute_1(&ma, aid_entry->id);
+		assert(error == 0);
+		attribute_print_simple(&ma);
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
 	int error;
 	char *dev_name;
-	//struct mam_attribute ma;
 
 	GC_INIT();
 
 //	while ((flag = getopt(argc, argv, "rf:v")) != -1) {
+//	}
 
 	if (flag_verbose)
 		uscsilib_verbose = 1;
@@ -480,11 +488,7 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-	mam_list_attributes(ATTR_LIST_AVAILABLE);
-//	mam_list_attributes(ATTR_LIST_SUPPORTED);
-	/*
-	mam_read_attribute_1(&ma, 0x000);
-	attribute_print_simple(&ma);*/
+	tool_list();
 
 	mam_scsi_device_close();
 
