@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <gc/gc.h>
 #include <utlist.h>
@@ -63,7 +64,7 @@ struct uscsi_dev dev;
 
 static const char *default_tape = "/dev/enrst0";
 
-bool flag_verbose = true; /* XXX */
+bool f_verbose = false;
 
 static char const *
 attribute_format_to_string(uint8_t format)
@@ -268,7 +269,13 @@ attribute_value_to_string(struct mam_attribute *ma)
 	return avstr;
 }
 
-void
+static inline void
+attribute_print_value(struct mam_attribute *ma)
+{
+	printf("%s\n", attribute_value_to_string(ma));
+}
+
+static inline void
 attribute_print_simple(struct mam_attribute *ma)
 {
 	printf("%x %s (%s, %d bytes, %s):%s\n",
@@ -402,7 +409,9 @@ mam_scsi_device_open(char *dev_name) {
 	struct uscsi_addr saddr;
 
 	dev.dev_name = dev_name;
-	printf("Opening device %s\n", dev.dev_name);
+
+	if (f_verbose)
+		printf("Opening device %s\n", dev.dev_name);
 
 	error = uscsi_open(&dev);
 	if (error) {
@@ -425,17 +434,19 @@ mam_scsi_device_open(char *dev_name) {
 		exit(1);
 	}
 
-	printf("\nDevice identifies itself as : ");
-	if (saddr.type == USCSI_TYPE_SCSI) {
-		printf("SCSI   busnum = %d, target = %d, lun = %d\n",
-		    saddr.addr.scsi.scbus, saddr.addr.scsi.target,
-		    saddr.addr.scsi.lun);
-	} else {
-		printf("ATAPI  busnum = %d, drive = %d\n",
-		    saddr.addr.atapi.atbus, saddr.addr.atapi.drive);
+	if (f_verbose) {
+		printf("\nDevice identifies itself as : ");
+		if (saddr.type == USCSI_TYPE_SCSI) {
+			printf("SCSI   busnum = %d, target = %d, lun = %d\n",
+			    saddr.addr.scsi.scbus, saddr.addr.scsi.target,
+			    saddr.addr.scsi.lun);
+		} else {
+			printf("ATAPI  busnum = %d, drive = %d\n",
+			    saddr.addr.atapi.atbus, saddr.addr.atapi.drive);
+		}
+	printf("\n");
 	}
 
-	printf("\n");
 
 	return error;
 }
@@ -447,8 +458,9 @@ mam_scsi_device_close()
 	uscsi_close(&dev);
 }
 
+/* Print all existing attributes. */
 void
-tool_list()
+tool_dump_attributes()
 {
 	int error;
 	struct mam_id_list *aid_list, *aid_entry;
@@ -465,18 +477,67 @@ tool_list()
 	}
 }
 
+/* Read a single attribute. */
+void
+tool_read_attribute(char *strid)
+{
+	uint16_t aid;
+	char *ae;
+	struct mam_attribute ma;
+
+	errno = 0;
+	aid = (uint16_t) strtoul(strid, &ae, 0);
+	assert(*ae == '\0');
+	assert(errno == 0);
+
+	assert(mam_read_attribute_1(&ma, aid) == 0);
+	attribute_print_value(&ma);
+
+}
+
+static void
+usage(void)
+{
+	fprintf(stderr, "%s [-v] -L|-r attribute ID\n", getprogname());
+
+}
+
 int
 main(int argc, char *argv[])
 {
 	int error;
 	char *dev_name;
 
+	int flag = 0 ;
+	int f_dump_attrs = 0;
+	int f_read_attr = 0;
+//	int f_devname;
+
 	GC_INIT();
 
-//	while ((flag = getopt(argc, argv, "rf:v")) != -1) {
-//	}
+	if (argc < 2) {
+		usage();
+		exit(EXIT_FAILURE);
+	}
 
-	if (flag_verbose)
+//	while ((flag = getopt(argc, argv, "Lrwf:v")) != -1) {
+	while ((flag = getopt(argc, argv, "Lrv")) != -1) {
+		switch (flag) {
+			case 'L':
+				f_dump_attrs = 1;
+				break;
+			case 'r':
+				f_read_attr = 1;
+				break;
+			case 'v':
+				f_verbose = 1;
+		}
+	}
+
+	argv += optind;
+	argc -= optind;
+
+	if (f_verbose)
 		uscsilib_verbose = 1;
 
 	dev_name = GC_strdup(default_tape);
@@ -488,11 +549,17 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
-	tool_list();
+	if (f_dump_attrs) {
+		tool_dump_attributes();
+	}
+
+	if (f_read_attr) {
+		tool_read_attribute(argv[0]);
+	}
 
 	mam_scsi_device_close();
 
-	return 0;
+	return EXIT_SUCCESS;
 
 }
 
