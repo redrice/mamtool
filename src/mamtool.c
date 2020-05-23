@@ -562,7 +562,7 @@ main(int argc, char *argv[])
 	if (f_verbose)
 		uscsilib_verbose = 1;
 
-	dev_name = GC_strdup(default_tape);
+	dev_name = GC_STRDUP(default_tape);
 	error = mam_scsi_device_open(dev_name);
 
 	if (error) {
