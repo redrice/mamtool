@@ -15,6 +15,7 @@
 #define CDB_RDATTR_ID_MSB	8
 #define CDB_RDATTR_ID_LSB	9
 #define CDB_RDATTR_ALLOCLEN_LSB	13
+#define CDB_WRATTR_PARAMLEN_LSB	CDB_RDATTR_ALLOCLEN_LSB
 
 #define CDB_RDATTR_SVCACTION_AVAL	0x0	/* attribute values */
 #define CDB_RDATTR_SVCACTION_ALIST	0x1	/* attribute list */
@@ -298,24 +299,68 @@ attribute_new(struct mam_attribute *ma, uint8_t *buf)
 }
 
 void
-cdb_list_attributes(scsicmd *cmd, uint8_t state, uint8_t length)
+cdb_list_attributes(scsicmd *cmd, uint8_t state, uint32_t length)
 {
 	memset(*cmd, 0, SCSI_CMD_LEN);
 
 	(*cmd)[CDB_OPCODE]		= OP_READ_ATTRIBUTE;
 	(*cmd)[CDB_RDATTR_SVCACTION]	= state;
-	(*cmd)[CDB_RDATTR_ALLOCLEN_LSB]	= length;
+	/* XXX */
+	(*cmd)[CDB_RDATTR_ALLOCLEN_LSB]	= length & 0xFF;
 }
 
 void
-cdb_read_attribute(scsicmd *cmd, uint16_t id, uint16_t length)
+cdb_read_attribute(scsicmd *cmd, uint16_t id, uint32_t length)
 {
 	memset(*cmd, 0, SCSI_CMD_LEN);
 
 	(*cmd)[CDB_OPCODE]		= OP_READ_ATTRIBUTE;
 	(*cmd)[CDB_RDATTR_ID_MSB]	= (id >> 8) & 0xff;
 	(*cmd)[CDB_RDATTR_ID_LSB]	= id & 0xff;
-	(*cmd)[CDB_RDATTR_ALLOCLEN_LSB]	= length;
+	/* XXX */
+	(*cmd)[CDB_RDATTR_ALLOCLEN_LSB]	= length & 0xFF;
+}
+
+void
+cdb_write_attribute(scsicmd *cmd, uint16_t id, uint32_t length)
+{
+	memset(*cmd, 0, SCSI_CMD_LEN);
+
+	(*cmd)[CDB_OPCODE]		= OP_WRITE_ATTRIBUTE;
+	/* XXX */
+	(*cmd)[CDB_WRATTR_PARAMLEN_LSB]	= length & 0xFF;
+}
+
+int
+mam_write_attribute_1(struct mam_attribute *ma)
+{
+	int error;
+	uint8_t *buf;
+	uint32_t buflen;
+	scsicmd cmd;
+
+	buflen = RDATTR_HEADONLY_LEN+(ma->length);
+	buf = GC_MALLOC(buflen);
+
+	cdb_read_attribute(&cmd, ma->id, buflen);
+
+	buf[3] = (uint8_t) ma->length;
+
+	// handle null termination of source value?
+
+	// attribute to buf
+	// temporary PoC soluation
+	snprintf((char *)(buf+RDATTR_HEADONLY_LEN), ma->length, "%s",
+	    ma->value);
+
+	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
+	    buflen, 10000, NULL);
+	
+	if (error)
+		return error;
+
+	return 0;
+
 }
 
 int
@@ -485,6 +530,37 @@ tool_dump_attributes()
 	}
 }
 
+void
+tool_write_attribute(char *strid, char *strformat, char *strvalue)
+{
+	char *ae;
+	int error;
+	struct mam_attribute ma;
+
+	errno = 0;
+	ma.id = (uint16_t) strtoul(strid, &ae, 0);
+	assert(*ae == '\0');
+	assert(errno == 0);
+
+	ma.format = (uint8_t) strtoul(strid, &ae, 0);
+	assert(*ae == '\0');
+	assert(errno == 0);
+
+	printf("len of value is: %lx\n", sizeof(strvalue));
+
+	ma.value = (uint8_t *) strvalue;
+	attribute_print_value(&ma);
+
+	error = mam_write_attribute_1(&ma);
+	if (error != 0) {
+		fprintf(stderr, "Error writing attribute value "
+		    "from SCSI device: %s\n"
+		    "Use -v to get more information.\n", strerror(error));
+		exit(EXIT_FAILURE);
+	}
+
+}
+
 /* Read a single attribute. */
 void
 tool_read_attribute(char *strid)
@@ -513,7 +589,9 @@ tool_read_attribute(char *strid)
 static void
 usage(const char *exec_name)
 {
-	fprintf(stderr, "%s [-v] -L|-r attribute ID\n", exec_name);
+	fprintf(stderr, "%s [-v] -L\n", exec_name);
+	fprintf(stderr, "%s [-v] -r attribute_ID\n", exec_name);
+	fprintf(stderr, "%s [-v] -w attribute_ID type value\n", exec_name);
 }
 
 int
@@ -526,6 +604,7 @@ main(int argc, char *argv[])
 	int flag = 0 ;
 	int f_dump_attrs = 0;
 	int f_read_attr = 0;
+	int f_write_attr = 0;
 //	int f_devname;
 
 	GC_INIT();
@@ -542,13 +621,16 @@ main(int argc, char *argv[])
 	}
 
 //	while ((flag = getopt(argc, argv, "Lrwf:v")) != -1) {
-	while ((flag = getopt(argc, argv, "Lrv")) != -1) {
+	while ((flag = getopt(argc, argv, "Lwrv")) != -1) {
 		switch (flag) {
 			case 'L':
 				f_dump_attrs = 1;
 				break;
 			case 'r':
 				f_read_attr = 1;
+				break;
+			case 'w':
+				f_write_attr = 1;
 				break;
 			case 'v':
 				f_verbose = 1;
@@ -577,6 +659,10 @@ main(int argc, char *argv[])
 
 	if (f_read_attr) {
 		tool_read_attribute(argv[0]);
+	}
+
+	if (f_write_attr) {
+		tool_write_attribute(argv[0], argv[1], argv[2]);
 	}
 
 	mam_scsi_device_close();
