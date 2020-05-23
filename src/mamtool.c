@@ -496,16 +496,16 @@ tool_read_attribute(char *strid)
 }
 
 static void
-usage(void)
+usage(const char *exec_name)
 {
-	fprintf(stderr, "%s [-v] -L|-r attribute ID\n", getprogname());
-
+	fprintf(stderr, "%s [-v] -L|-r attribute ID\n", exec_name);
 }
 
 int
 main(int argc, char *argv[])
 {
 	int error;
+	const char *exec_name;
 	char *dev_name;
 
 	int flag = 0 ;
@@ -515,8 +515,14 @@ main(int argc, char *argv[])
 
 	GC_INIT();
 
+#if defined(_NETBSD_SOURCE)
+	exec_name = getprogname();
+#else
+	exec_name = GC_STRDUP(argv[0]);
+#endif
+
 	if (argc < 2) {
-		usage();
+		usage(exec_name);
 		exit(EXIT_FAILURE);
 	}
 
