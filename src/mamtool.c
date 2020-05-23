@@ -391,6 +391,7 @@ mam_list_attribute_ids(struct mam_id_list **list, uint8_t state)
 
 	for (i = 0; i < bllen/2; i++) {
 		lentry = GC_MALLOC(sizeof(struct mam_id_list));
+		assert(lentry != NULL);
 		lentry->id = bswap16_to_host(*(bp+i));
 		LL_APPEND(*list, lentry);
 	}
@@ -468,7 +469,14 @@ tool_dump_attributes()
 
 	aid_list = NULL;
 
-	mam_list_attribute_ids(&aid_list, ATTR_LIST_AVAILABLE);
+	error = mam_list_attribute_ids(&aid_list, ATTR_LIST_AVAILABLE);
+
+	if (error != 0) {
+		fprintf(stderr, "Error obtaining attribute ID list "
+		    "from SCSI device: %s\n"
+		    "Use -v to get more information.\n", strerror(error));
+		exit(EXIT_FAILURE);
+	}
 
 	LL_FOREACH(aid_list, aid_entry) {
 		error = mam_read_attribute_1(&ma, aid_entry->id);
@@ -483,6 +491,7 @@ tool_read_attribute(char *strid)
 {
 	uint16_t aid;
 	char *ae;
+	int error;
 	struct mam_attribute ma;
 
 	errno = 0;
@@ -490,7 +499,13 @@ tool_read_attribute(char *strid)
 	assert(*ae == '\0');
 	assert(errno == 0);
 
-	assert(mam_read_attribute_1(&ma, aid) == 0);
+	error = mam_read_attribute_1(&ma, aid);
+	if (error != 0) {
+		fprintf(stderr, "Error obtaining attribute value "
+		    "from SCSI device: %s\n"
+		    "Use -v to get more information.\n", strerror(error));
+		exit(EXIT_FAILURE);
+	}
 	attribute_print_value(&ma);
 
 }
@@ -537,6 +552,7 @@ main(int argc, char *argv[])
 				break;
 			case 'v':
 				f_verbose = 1;
+				break;
 		}
 	}
 
