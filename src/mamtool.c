@@ -218,6 +218,8 @@ bswap16_to_host(uint16_t v)
 {
 if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 	return bswap16(v);
+else
+	return v;
 }
 
 static inline uint32_t
@@ -225,12 +227,16 @@ bswap32_to_host(uint32_t v)
 {
 if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 	return bswap32(v);
+else
+	return v;
 }
 static inline uint64_t
 bswap64_to_host(uint64_t v)
 {
 if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 	return bswap64(v);
+else
+	return v;
 }
 
 static char const *
@@ -298,6 +304,28 @@ attribute_new(struct mam_attribute *ma, uint8_t *buf)
 	ma->value = NULL;
 }
 
+/*
+ * Seralize the attribute to buffer that can be used with WRITE ATTRIBUTE
+ * SCSI command.
+ */
+void
+attribute_to_buffer(struct mam_attribute *ma, uint8_t *buf, uint32_t buflen)
+{
+	buf[3] = (uint8_t) buflen; //XXX
+	buf[4] = (ma->id >> 8) & 0xFF ;
+	buf[5] = ma->id & 0xFF;
+	buf[6] = ma->format;
+	buf[8] = (uint8_t) ma->length;
+
+	// XXX: handle null termination of source value
+
+	// attribute to buf
+	// temporary PoC soluation
+	snprintf((char *)(buf+RDATTR_HEADONLY_LEN), ma->length, "%s",
+	    ma->value);
+//	strncpy((char *)(buf+RDATTR_HEADONLY_LEN), (const char *) ma->value, (ma->length));
+}
+
 void
 cdb_list_attributes(scsicmd *cmd, uint8_t state, uint32_t length)
 {
@@ -315,8 +343,8 @@ cdb_read_attribute(scsicmd *cmd, uint16_t id, uint32_t length)
 	memset(*cmd, 0, SCSI_CMD_LEN);
 
 	(*cmd)[CDB_OPCODE]		= OP_READ_ATTRIBUTE;
-	(*cmd)[CDB_RDATTR_ID_MSB]	= (id >> 8) & 0xff;
-	(*cmd)[CDB_RDATTR_ID_LSB]	= id & 0xff;
+	(*cmd)[CDB_RDATTR_ID_MSB]	= (id >> 8) & 0xFF;
+	(*cmd)[CDB_RDATTR_ID_LSB]	= id & 0xFF;
 	/* XXX */
 	(*cmd)[CDB_RDATTR_ALLOCLEN_LSB]	= length & 0xFF;
 }
@@ -342,20 +370,14 @@ mam_write_attribute_1(struct mam_attribute *ma)
 	buflen = RDATTR_HEADONLY_LEN+(ma->length);
 	buf = GC_MALLOC(buflen);
 
-	cdb_read_attribute(&cmd, ma->id, buflen);
+	cdb_write_attribute(&cmd, ma->id, buflen);
 
-	buf[3] = (uint8_t) ma->length;
-
-	// handle null termination of source value?
-
-	// attribute to buf
-	// temporary PoC soluation
-	snprintf((char *)(buf+RDATTR_HEADONLY_LEN), ma->length, "%s",
-	    ma->value);
+	attribute_to_buffer(ma, buf, buflen);
 
 	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
 	    buflen, 10000, NULL);
 	
+	error = 1;
 	if (error)
 		return error;
 
@@ -542,11 +564,13 @@ tool_write_attribute(char *strid, char *strformat, char *strvalue)
 	assert(*ae == '\0');
 	assert(errno == 0);
 
-	ma.format = (uint8_t) strtoul(strid, &ae, 0);
+	ma.format = (uint8_t) strtoul(strformat, &ae, 0);
 	assert(*ae == '\0');
 	assert(errno == 0);
 
-	printf("len of value is: %lx\n", sizeof(strvalue));
+	ma.length = strlen(strvalue);
+
+	printf("format %x, len of value %s is: %lx\n", ma.format, strvalue, strlen(strvalue));
 
 	ma.value = (uint8_t *) strvalue;
 	attribute_print_value(&ma);
