@@ -8,6 +8,10 @@
 #include <gc/gc.h>
 #include <utlist.h>
 
+#ifdef __linux__
+#include <byteswap.h>
+#endif
+
 #include "uscsilib.h"
 
 #define CDB_OPCODE		0
@@ -64,6 +68,7 @@ struct mam_id_list {
 struct uscsi_dev dev;
 
 static const char *default_tape = "/dev/enrst0";
+//static const char *default_tape = "/dev/sg7";
 
 bool f_verbose = false;
 
@@ -217,7 +222,11 @@ static inline uint16_t
 bswap16_to_host(uint16_t v)
 {
 if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#ifdef __linux__
+	return bswap_16(v);
+#else
 	return bswap16(v);
+#endif
 else
 	return v;
 }
@@ -226,7 +235,11 @@ static inline uint32_t
 bswap32_to_host(uint32_t v)
 {
 if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#ifdef __linux__
+	return bswap_32(v);
+#else
 	return bswap32(v);
+#endif
 else
 	return v;
 }
@@ -234,7 +247,11 @@ static inline uint64_t
 bswap64_to_host(uint64_t v)
 {
 if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#ifdef __linux__
+	return bswap_64(v);
+#else
 	return bswap64(v);
+#endif
 else
 	return v;
 }
@@ -321,9 +338,9 @@ attribute_to_buffer(struct mam_attribute *ma, uint8_t *buf, uint32_t buflen)
 
 	// attribute to buf
 	// temporary PoC soluation
-	snprintf((char *)(buf+RDATTR_HEADONLY_LEN), ma->length, "%s",
-	    ma->value);
-//	strncpy((char *)(buf+RDATTR_HEADONLY_LEN), (const char *) ma->value, (ma->length));
+	//snprintf((char *)(buf+RDATTR_HEADONLY_LEN), ma->length, "%s",
+	//    ma->value);
+	strncpy((char *)(buf+RDATTR_HEADONLY_LEN), (const char *) ma->value, (ma->length));
 }
 
 void
@@ -374,10 +391,9 @@ mam_write_attribute_1(struct mam_attribute *ma)
 
 	attribute_to_buffer(ma, buf, buflen);
 
-	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
+	error = uscsi_command(SCSI_WRITECMD, &dev, cmd, 16, buf,
 	    buflen, 10000, NULL);
 	
-	error = 1;
 	if (error)
 		return error;
 
@@ -547,8 +563,10 @@ tool_dump_attributes()
 
 	LL_FOREACH(aid_list, aid_entry) {
 		error = mam_read_attribute_1(&ma, aid_entry->id);
-		assert(error == 0);
-		attribute_print_simple(&ma);
+//		printf("id %x error %d\n", aid_entry->id, error);
+		assert(error == 0); // XXX
+		if (error == 0)
+			attribute_print_simple(&ma);
 	}
 }
 
