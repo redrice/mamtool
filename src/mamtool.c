@@ -67,8 +67,8 @@ struct mam_id_list {
 
 struct uscsi_dev dev;
 
-static const char *default_tape = "/dev/enrst0";
-//static const char *default_tape = "/dev/sg7";
+//static const char *default_tape = "/dev/enrst0";
+static const char *default_tape = "/dev/sg3";
 
 bool f_verbose = false;
 
@@ -700,10 +700,19 @@ main(int argc, char *argv[])
 	}
 
 	if (f_read_attr) {
+		if (argc < 1) {
+			usage(exec_name);
+			exit(EXIT_FAILURE);
+		}
+
 		tool_read_attribute(argv[0]);
 	}
 
 	if (f_write_attr) {
+		if (argc < 3) {
+			usage(exec_name);
+			exit(EXIT_FAILURE);
+		}
 		tool_write_attribute(argv[0], argv[1], argv[2]);
 	}
 
