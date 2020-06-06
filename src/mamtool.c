@@ -67,8 +67,7 @@ struct mam_id_list {
 
 struct uscsi_dev dev;
 
-//static const char *default_tape = "/dev/enrst0";
-static const char *default_tape = "/dev/sg3";
+static const char *default_tape = "/dev/enrst0";
 
 bool f_verbose = false;
 
@@ -647,7 +646,6 @@ main(int argc, char *argv[])
 	int f_dump_attrs = 0;
 	int f_read_attr = 0;
 	int f_write_attr = 0;
-//	int f_devname;
 
 	GC_INIT();
 
@@ -657,16 +655,20 @@ main(int argc, char *argv[])
 	exec_name = GC_STRDUP(argv[0]);
 #endif
 
+	dev_name = GC_STRDUP(default_tape);
+
 	if (argc < 2) {
 		usage(exec_name);
 		exit(EXIT_FAILURE);
 	}
 
-//	while ((flag = getopt(argc, argv, "Lrwf:v")) != -1) {
-	while ((flag = getopt(argc, argv, "Lwrv")) != -1) {
+	while ((flag = getopt(argc, argv, "Lf:rwv")) != -1) {
 		switch (flag) {
 			case 'L':
 				f_dump_attrs = 1;
+				break;
+			case 'f':
+				dev_name = GC_STRDUP(optarg);
 				break;
 			case 'r':
 				f_read_attr = 1;
@@ -686,7 +688,6 @@ main(int argc, char *argv[])
 	if (f_verbose)
 		uscsilib_verbose = 1;
 
-	dev_name = GC_STRDUP(default_tape);
 	error = mam_scsi_device_open(dev_name);
 
 	if (error) {
