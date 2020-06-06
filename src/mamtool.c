@@ -630,9 +630,9 @@ tool_read_attribute(char *strid)
 static void
 usage(const char *exec_name)
 {
-	fprintf(stderr, "%s [-v] -L\n", exec_name);
-	fprintf(stderr, "%s [-v] -r attribute_ID\n", exec_name);
-	fprintf(stderr, "%s [-v] -w attribute_ID type value\n", exec_name);
+	fprintf(stderr, "%s [-f /dev/name] [-v] -L\n", exec_name);
+	fprintf(stderr, "%s [-f /dev/name] [-v] -r attribute_ID\n", exec_name);
+	fprintf(stderr, "%s [-f /dev/name] [-v] -w attribute_ID type value\n", exec_name);
 }
 
 int
