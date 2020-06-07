@@ -236,7 +236,7 @@ attribute_set_value(struct mam_attribute *ma, uint8_t *buf)
 }
 
 static inline uint16_t
-bswap16_to_host(uint16_t v)
+be16_to_host(uint16_t v)
 {
 if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 #ifdef __linux__
@@ -249,7 +249,7 @@ else
 }
 
 static inline uint32_t
-bswap32_to_host(uint32_t v)
+be32_to_host(uint32_t v)
 {
 if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 #ifdef __linux__
@@ -261,7 +261,7 @@ else
 	return v;
 }
 static inline uint64_t
-bswap64_to_host(uint64_t v)
+be64_to_host(uint64_t v)
 {
 if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 #ifdef __linux__
@@ -289,13 +289,13 @@ attribute_value_to_string(struct mam_attribute *ma)
 			snprintf(avstr, AVSTRLEN, "%"PRIu8, *(ma->value));
 			break;
 		case 2:
-			snprintf(avstr, AVSTRLEN, "%"PRIu16, bswap16_to_host(*(uint16_t *)(ma->value)));
+			snprintf(avstr, AVSTRLEN, "%"PRIu16, be16_to_host(*(uint16_t *)(ma->value)));
 			break;
 		case 4:
-			snprintf(avstr, AVSTRLEN, "%"PRIu32, bswap32_to_host(*(uint32_t *)(ma->value)));
+			snprintf(avstr, AVSTRLEN, "%"PRIu32, be32_to_host(*(uint32_t *)(ma->value)));
 			break;
 		case 8:
-			snprintf(avstr, AVSTRLEN, "%"PRIu64, bswap64_to_host(*(uint64_t *)(ma->value)));
+			snprintf(avstr, AVSTRLEN, "%"PRIu64, be64_to_host(*(uint64_t *)(ma->value)));
 			break;
 		default: /* XXX */
 			cw = 0;
@@ -380,11 +380,11 @@ uci_print_pretty(uint8_t *rawval)
 	memcpy(&cartridge_type, rawval, 2);
 	rawval += 4;
 
-	printf("%u\n", bswap32_to_host(ltocm_serial));
-	printf("%lu\n", bswap64_to_host(pancake_id));
+	printf("%u\n", be32_to_host(ltocm_serial));
+	printf("%lu\n", be64_to_host(pancake_id));
 	printf("%s\n", manufacturer);
-	printf("%x\n", bswap32_to_host(lpos_lp1));
-	printf("%x\n", bswap16_to_host(cartridge_type));
+	printf("%x\n", be32_to_host(lpos_lp1));
+	printf("%x\n", be16_to_host(cartridge_type));
 
 }
 
@@ -512,7 +512,7 @@ mam_list_attribute_ids(struct mam_id_list **list, uint8_t state)
 	if (error)
 		return error;
 
-	bllen = bswap32_to_host(*((uint32_t *) buf));
+	bllen = be32_to_host(*((uint32_t *) buf));
 
 	buf = GC_MALLOC(RDATTR_LISTHEAD_LEN+bllen);
 	assert (buf != NULL);
@@ -526,7 +526,7 @@ mam_list_attribute_ids(struct mam_id_list **list, uint8_t state)
 	for (i = 0; i < bllen/2; i++) {
 		lentry = GC_MALLOC(sizeof(struct mam_id_list));
 		assert(lentry != NULL);
-		lentry->id = bswap16_to_host(*(bp+i));
+		lentry->id = be16_to_host(*(bp+i));
 		LL_APPEND(*list, lentry);
 	}
 
