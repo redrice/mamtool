@@ -40,7 +40,13 @@
 #define SCSI_CMD_LEN  16
 typedef unsigned char scsicmd[SCSI_CMD_LEN];
 
-#include "defs.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <inttypes.h>
+
 #include "uscsilib_machdep.h"
 extern	int uscsilib_verbose;
 
