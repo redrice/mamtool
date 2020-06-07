@@ -369,6 +369,8 @@ uci_print_pretty(uint8_t *rawval)
 	uint32_t lpos_lp1;
 	uint16_t cartridge_type;
 
+	printf("Unique Cartridge Identity\n");
+
 	memcpy(&ltocm_serial, rawval, 4);
 	rawval += 4;
 	memcpy(&pancake_id, rawval, 8);
@@ -380,18 +382,37 @@ uci_print_pretty(uint8_t *rawval)
 	memcpy(&cartridge_type, rawval, 2);
 	rawval += 4;
 
-	printf("%u\n", be32_to_host(ltocm_serial));
-	printf("%lu\n", be64_to_host(pancake_id));
+	printf("%"PRIu32"\n", be32_to_host(ltocm_serial));
+	printf("%"PRIu64"\n", be64_to_host(pancake_id));
 	printf("%s\n", manufacturer);
-	printf("%x\n", be32_to_host(lpos_lp1));
-	printf("%x\n", be16_to_host(cartridge_type));
+	printf("%"PRIu32"\n", be32_to_host(lpos_lp1));
+	printf("%"PRIu16"\n", be16_to_host(cartridge_type));
 
 }
 
 void
 ucialt_print_pretty(uint8_t *rawval)
 {
+	uint32_t ltocm_serial;
+	uint64_t pancake_id;
+	char serial[11];
+	uint16_t cartridge_type;
 
+	printf("Alternate Unique Cartridge Identity\n");
+
+	memcpy(&ltocm_serial, rawval, 4);
+	rawval += 4;
+	memcpy(&pancake_id, rawval, 8);
+	rawval += 8;
+	memcpy(serial, rawval, 10);
+	rawval += 10;
+	memcpy(&cartridge_type, rawval, 2);
+	rawval += 4;
+
+	printf("%"PRIu32"\n", be32_to_host(ltocm_serial));
+	printf("%"PRIu64"\n", be64_to_host(pancake_id));
+	printf("%s\n", serial);
+	printf("%"PRIu16"\n", be16_to_host(cartridge_type));
 }
 
 void
@@ -695,6 +716,16 @@ tool_print_uci()
 	}
 
 	uci_print_pretty(ma.value);
+
+	error = mam_read_attribute_1(&ma, 0x1001);
+	if (error != 0) {
+		fprintf(stderr, "Error obtaining attribute value "
+		    "from SCSI device: %s\n"
+		    "Use -v to get more information.\n", strerror(error));
+		exit(EXIT_FAILURE);
+	}
+
+	ucialt_print_pretty(ma.value);
 
 }
 
