@@ -44,12 +44,12 @@
 #define RDATTR_ATTRHEAD_ATTRLEN_MSB	3
 #define RDATTR_ATTRHEAD_ATTRLEN_LSB	4
 
-#define ATTR_FORMAT_MASK		0x03
-#define ATTR_RO_MASK			0x80
+#define ATTR_FMT_MASK		0x03
+#define ATTR_RO_MASK		0x80
 
-#define ATTR_FORMAT_BINARY		0
-#define ATTR_FORMAT_ASCII		1
-#define ATTR_FORMAT_TEXT		2
+#define ATTR_FMT_BINARY		0
+#define ATTR_FMT_ASCII		1
+#define ATTR_FMT_TEXT		2
 
 struct mam_attribute {
 	uint16_t id;
@@ -57,6 +57,13 @@ struct mam_attribute {
 	uint8_t format;
 	bool ro;
 	uint8_t *value;
+};
+
+struct mam_attribute_definition {
+	uint16_t id;
+	uint16_t lenght;
+	uint8_t format;
+	const char* name;
 };
 
 struct mam_id_list {
@@ -67,7 +74,71 @@ struct mam_id_list {
 
 struct uscsi_dev dev;
 
+#ifdef __linux__
+static const char *default_tape = "/dev/nst0";
+#else
 static const char *default_tape = "/dev/enrst0";
+#endif
+
+#define ATTR_DEF_NUM 50
+static struct mam_attribute_definition attr_def[] = {
+
+	/* Device type attributes */
+	{ 0x0000, 8, ATTR_FMT_BINARY, "REMAINING CAPACITY IN PARTITION" },
+	{ 0x0001, 8, ATTR_FMT_BINARY, "MAXIMUM CAPACITY IN PARTITION"},
+	{ 0x0002, 8, ATTR_FMT_BINARY, "TAPEALERT FLAGS"},
+	{ 0x0003, 8, ATTR_FMT_BINARY, "LOAD COUNT" },
+	{ 0x0004, 8, ATTR_FMT_BINARY, "MAM SPACE REMAINING" },
+	{ 0x0005, 8, ATTR_FMT_ASCII, "ASSIGNING ORGANIZATION" },
+	{ 0x0006, 1, ATTR_FMT_BINARY, "FORMATTED DENSITY CODE" },
+	{ 0x0007, 2, ATTR_FMT_BINARY, "INITIALIZATION COUNT" },
+	{ 0x0008, 32, ATTR_FMT_ASCII, "VOLUME IDENTIFIER" },
+	{ 0x0009, 4, ATTR_FMT_BINARY, "VOLUME CHANGE REFERENCE" },
+	{ 0x020A, 40, ATTR_FMT_ASCII, "DEVICE VENDOR/SERIAL NUMBER AT LAST LOAD" },
+	{ 0x020B, 40, ATTR_FMT_ASCII, "DEVICE VENDOR/SERIAL NUMBER AT LOAD-1" },
+	{ 0x020C, 40, ATTR_FMT_ASCII, "DEVICE VENDOR/SERIAL NUMBER AT LOAD-2" },
+	{ 0x020D, 40, ATTR_FMT_ASCII, "DEVICE VENDOR/SERIAL NUMBER AT LOAD-3" },
+	{ 0x0220, 8, ATTR_FMT_BINARY, "TOTAL MBYTES WRITTEN IN MEDIUM LIFE" },
+	{ 0x0221, 8, ATTR_FMT_BINARY, "TOTAL MBYTES READ IN MEDIUM LIFE" },
+	{ 0x0222, 8, ATTR_FMT_BINARY, "TOTAL MBYTES WRITTEN IN CURRENT/LAST LOAD" },
+	{ 0x0223, 8, ATTR_FMT_BINARY, "TOTAL MBYTES READ IN CURRENT/LAST LOAD" },
+	{ 0x0224, 8, ATTR_FMT_BINARY, "LOGICAL POSITION OF FIRST ENCRYPTED BLOCK" },
+	{ 0x0225, 8, ATTR_FMT_BINARY, "LOGICAL POSITION OF FIRST UNENCRYPTED BLOCK AFTER THE FIRST ENCRYPTED BLOCK" },
+	{ 0x0340, 90, ATTR_FMT_BINARY, "MEDIUM USAGE HISTORY" },
+	{ 0x0341, 60, ATTR_FMT_BINARY, "PARTITION USAGE HISTORY" },
+	/* Medium type attributes */
+	{ 0x0400, 8, ATTR_FMT_ASCII, "MEDIUM MANUFACTURER" },
+	{ 0x0401, 32, ATTR_FMT_ASCII, "MEDIUM SERIAL NUMBER" },
+	{ 0x0402, 4, ATTR_FMT_BINARY, "MEDIUM LENGTH" },
+	{ 0x0403, 4, ATTR_FMT_BINARY, "MEDIUM WIDTH" },
+	{ 0x0404, 8, ATTR_FMT_ASCII, "ASSIGNING ORGANIZATION" },
+	{ 0x0405, 1, ATTR_FMT_BINARY, "MEDIUM DENSITY CODE" },
+	{ 0x0406, 8, ATTR_FMT_ASCII, "MEDIUM MANUFACTURE DATE" },
+	{ 0x0407, 8, ATTR_FMT_BINARY, "MAM CAPACITY" },
+	{ 0x0408, 1, ATTR_FMT_BINARY, "MEDIUM TYPE" },
+	{ 0x0409, 2, ATTR_FMT_BINARY, "MEDIUM TYPE INFORMATION" },
+	{ 0x040A, 0, ATTR_FMT_BINARY, "NUMERIC MEDIUM SERIAL NUMBER" }, /* XXX */
+	{ 0x040B, 0, ATTR_FMT_BINARY, "SUPPORTED DENSITY CODES" }, /* XXX */
+	/* Host type attributes */
+	{ 0x0800, 8, ATTR_FMT_ASCII, "APPLICATION VENDOR" },
+	{ 0x0801, 32, ATTR_FMT_ASCII, "APPLICATION NAME" },
+	{ 0x0802, 8, ATTR_FMT_ASCII, "APPLICATION VERSION" },
+	{ 0x0803, 160, ATTR_FMT_TEXT, "USER MEDIUM TEXT LABEL" },
+	{ 0x0804, 12, ATTR_FMT_ASCII, "DATE AND TIME LAST WRITTEN" },
+	{ 0x0805, 1, ATTR_FMT_BINARY, "TEXT LOCALIZATION IDENTIFIER" },
+	{ 0x0806, 32, ATTR_FMT_ASCII, "BARCODE" },
+	{ 0x0807, 80, ATTR_FMT_TEXT, "OWNING HOST TEXTUAL NAME" },
+	{ 0x0808, 160, ATTR_FMT_TEXT, "MEDIA POOL" },
+	{ 0x0809, 0, ATTR_FMT_TEXT, "PARTITION USER TEXT LABEL" }, /* XXX */
+	{ 0x080A, 0, ATTR_FMT_BINARY, "LOAD/UNLOAD AT PARTITION" }, /* XXX */
+	{ 0x080B, 16, ATTR_FMT_ASCII, "APPLICATION FORMAT VERSION" },
+	{ 0x080C, 0, ATTR_FMT_BINARY, "VOLUME COHERENCY INFORMATION" },
+	{ 0x0820, 36, ATTR_FMT_BINARY, "MEDIUM GLOBALLY UNIQUE IDENTIFIER" },
+	{ 0x0821, 36, ATTR_FMT_BINARY, "MEDIA POOL GLOBALLY UNIQUE IDENTIFIER" },
+	/* Vendor specific / non-standard */
+	{ 0x1000, 28, ATTR_FMT_BINARY, "UNIQUE CARTRIDGE IDENTITY" },
+	{ 0x1001, 24, ATTR_FMT_BINARY, "ALTERNATIVE UNIQUE CARTRIDGE IDENTITY" }
+};
 
 bool f_verbose = false;
 
@@ -96,66 +167,13 @@ attribute_ro_to_string(bool ro)
 static char const *
 attribute_id_to_string(uint16_t id)
 {
+	uint16_t i;
 #define UNKIDSTRLEN		50
 	static char unknownstr[UNKIDSTRLEN];
 
-	switch (id) {
-	/* Device type attributes */
-	case 0x0000: return "REMAINING CAPACITY IN PARTITION";
-	case 0x0001: return "MAXIMUM CAPACITY IN PARTITION";
-	case 0x0002: return "TAPEALERT FLAGS";
-	case 0x0003: return "LOAD COUNT";
-	case 0x0004: return "MAM SPACE REMAINING";
-	case 0x0005: return "ASSIGNING ORGANIZATION";
-	case 0x0006: return "FORMATTED DENSITY CODE";
-	case 0x0007: return "INITIALIZATION COUNT";
-	case 0x0008: return "VOLUME IDENTIFIER";
-	case 0x0009: return "VOLUME CHANGE REFERENCE";
-	case 0x020A: return "DEVICE VENDOR/SERIAL NUMBER AT LAST LOAD";
-	case 0x020B: return "DEVICE VENDOR/SERIAL NUMBER AT LOAD-1";
-	case 0x020C: return "DEVICE VENDOR/SERIAL NUMBER AT LOAD-2";
-	case 0x020D: return "DEVICE VENDOR/SERIAL NUMBER AT LOAD-3";
-	case 0x0220: return "TOTAL MBYTES WRITTEN IN MEDIUM LIFE";
-	case 0x0221: return "TOTAL MBYTES READ IN MEDIUM LIFE";
-	case 0x0222: return "TOTAL MBYTES WRITTEN IN CURRENT/LAST LOAD";
-	case 0x0223: return "TOTAL MBYTES READ IN CURRENT/LAST LOAD";
-	case 0x0224: return "LOGICAL POSITION OF FIRST ENCRYPTED BLOCK";
-	case 0x0225: return "LOGICAL POSITION OF FIRST UNENCRYPTED BLOCK AFTER THE FIRST ENCRYPTED BLOCK";
-	case 0x0340: return "MEDIUM USAGE HISTORY";
-	case 0x0341: return "PARTITION USAGE HISTORY";
-	/* Medium type attributes */
-	case 0x0400: return "MEDIUM MANUFACTURER";
-	case 0x0401: return "MEDIUM SERIAL NUMBER";
-	case 0x0402: return "MEDIUM LENGTH";
-	case 0x0403: return "MEDIUM WIDTH";
-	case 0x0404: return "ASSIGNING ORGANIZATION";
-	case 0x0405: return "MEDIUM DENSITY CODE";
-	case 0x0406: return "MEDIUM MANUFACTURE DATE";
-	case 0x0407: return "MAM CAPACITY";
-	case 0x0408: return "MEDIUM TYPE";
-	case 0x0409: return "MEDIUM TYPE INFORMATION";
-	case 0x040A: return "NUMERIC MEDIUM SERIAL NUMBER";
-	case 0x040B: return "SUPPORTED DENSITY CODES";
-	/* Host type attributes */
-	case 0x0800: return "APPLICATION VENDOR";
-	case 0x0801: return "APPLICATION NAME";
-	case 0x0802: return "APPLICATION VERSION";
-	case 0x0803: return "USER MEDIUM TEXT LABEL";
-	case 0x0804: return "DATE AND TIME LAST WRITTEN";
-	case 0x0805: return "TEXT LOCALIZATION IDENTIFIER";
-	case 0x0806: return "BARCODE";
-	case 0x0807: return "OWNING HOST TEXTUAL NAME";
-	case 0x0808: return "MEDIA POOL";
-	case 0x0809: return "PARTITION USER TEXT LABEL";
-	case 0x080A: return "LOAD/UNLOAD AT PARTITION";
-	case 0x080B: return "APPLICATION FORMAT VERSION";
-	case 0x080C: return "VOLUME COHERENCY INFORMATION";
-	case 0x0820: return "MEDIUM GLOBALLY UNIQUE IDENTIFIER";
-	case 0x0821: return "MEDIA POOL GLOBALLY UNIQUE IDENTIFIER";
-
-	/* Vendor specific / non-standard */
-	case 0x1000: return "UNIQUE CARTRIDGE IDENTITY";
-	case 0x1001: return "ALTERNATIVE UNIQUE CARTRIDGE IDENTITY";
+	for (i = 0; i <= ATTR_DEF_NUM; i++) {
+		if (attr_def[i].id == id)
+			return attr_def[i].name;
 	}
 
 	snprintf(unknownstr, UNKIDSTRLEN,
@@ -181,7 +199,7 @@ attribute_length_from_head(uint8_t *buf)
 static inline uint8_t
 attribute_format_from_head(uint8_t *buf)
 {
-	return (buf[RDATTR_ATTRHEAD_FORMAT] & ATTR_FORMAT_MASK);
+	return (buf[RDATTR_ATTRHEAD_FORMAT] & ATTR_FMT_MASK);
 }
 
 static inline bool
@@ -200,8 +218,8 @@ attribute_set_value(struct mam_attribute *ma, uint8_t *buf)
 
 	vbuflen = ma->length;
 
-	if ((ma->format == ATTR_FORMAT_ASCII)
-	    || (ma->format == ATTR_FORMAT_TEXT))
+	if ((ma->format == ATTR_FMT_ASCII)
+	    || (ma->format == ATTR_FMT_TEXT))
 		(vbuflen)++;
 
 	ma->value = GC_MALLOC(ma->length);
@@ -262,7 +280,7 @@ attribute_value_to_string(struct mam_attribute *ma)
 	uint16_t i, cw;
 	char *avstr;
 
-	if ((ma->format) == ATTR_FORMAT_BINARY) {
+	if ((ma->format) == ATTR_FMT_BINARY) {
 		avstr = GC_MALLOC(AVSTRLEN);
 		memset(avstr, 0, AVSTRLEN);
 
@@ -340,6 +358,40 @@ attribute_to_buffer(struct mam_attribute *ma, uint8_t *buf, uint32_t buflen)
 	//snprintf((char *)(buf+RDATTR_HEADONLY_LEN), ma->length, "%s",
 	//    ma->value);
 	strncpy((char *)(buf+RDATTR_HEADONLY_LEN), (const char *) ma->value, (ma->length));
+}
+
+void
+uci_print_pretty(uint8_t *rawval) 
+{
+	uint32_t ltocm_serial;
+	uint64_t pancake_id;
+	char manufacturer[9];
+	uint32_t lpos_lp1;
+	uint16_t cartridge_type;
+
+	memcpy(&ltocm_serial, rawval, 4);
+	rawval += 4;
+	memcpy(&pancake_id, rawval, 8);
+	rawval += 8;
+	memcpy(manufacturer, rawval, 8);
+	rawval += 8;
+	memcpy(&lpos_lp1, rawval, 4);
+	rawval += 4;
+	memcpy(&cartridge_type, rawval, 2);
+	rawval += 4;
+
+	printf("%u\n", bswap32_to_host(ltocm_serial));
+	printf("%lu\n", bswap64_to_host(pancake_id));
+	printf("%s\n", manufacturer);
+	printf("%x\n", bswap32_to_host(lpos_lp1));
+	printf("%x\n", bswap16_to_host(cartridge_type));
+
+}
+
+void
+ucialt_print_pretty(uint8_t *rawval)
+{
+
 }
 
 void
@@ -627,12 +679,33 @@ tool_read_attribute(char *strid)
 
 }
 
+/* Pretty print UCI data. */
+void
+tool_print_uci()
+{
+	int error;
+	struct mam_attribute ma;
+
+	error = mam_read_attribute_1(&ma, 0x1000);
+	if (error != 0) {
+		fprintf(stderr, "Error obtaining attribute value "
+		    "from SCSI device: %s\n"
+		    "Use -v to get more information.\n", strerror(error));
+		exit(EXIT_FAILURE);
+	}
+
+	uci_print_pretty(ma.value);
+
+}
+
+
 static void
 usage(const char *exec_name)
 {
 	fprintf(stderr, "%s [-f /dev/name] [-v] -L\n", exec_name);
 	fprintf(stderr, "%s [-f /dev/name] [-v] -r attribute_ID\n", exec_name);
 	fprintf(stderr, "%s [-f /dev/name] [-v] -w attribute_ID type value\n", exec_name);
+	fprintf(stderr, "%s [-f /dev/name] [-v] -u\n", exec_name);
 }
 
 int
@@ -646,6 +719,7 @@ main(int argc, char *argv[])
 	int f_dump_attrs = 0;
 	int f_read_attr = 0;
 	int f_write_attr = 0;
+	int f_uciprint = 0;
 
 	GC_INIT();
 
@@ -662,7 +736,7 @@ main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	while ((flag = getopt(argc, argv, "Lf:rwv")) != -1) {
+	while ((flag = getopt(argc, argv, "Lf:rwuv")) != -1) {
 		switch (flag) {
 			case 'L':
 				f_dump_attrs = 1;
@@ -675,6 +749,9 @@ main(int argc, char *argv[])
 				break;
 			case 'w':
 				f_write_attr = 1;
+				break;
+			case 'u':
+				f_uciprint = 1;
 				break;
 			case 'v':
 				f_verbose = 1;
@@ -698,6 +775,10 @@ main(int argc, char *argv[])
 
 	if (f_dump_attrs) {
 		tool_dump_attributes();
+	}
+
+	if (f_uciprint) {
+		tool_print_uci();
 	}
 
 	if (f_read_attr) {
