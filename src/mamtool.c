@@ -615,7 +615,7 @@ mam_scsi_device_close()
 }
 
 /* Print all existing attributes. */
-void
+static void
 tool_dump_attributes()
 {
 	int error;
@@ -642,7 +642,7 @@ tool_dump_attributes()
 	}
 }
 
-void
+static void
 tool_write_attribute(char *strid, char *strformat, char *strvalue)
 {
 	char *ae;
@@ -676,7 +676,7 @@ tool_write_attribute(char *strid, char *strformat, char *strvalue)
 }
 
 /* Read a single attribute. */
-void
+static void
 tool_read_attribute(char *strid)
 {
 	uint16_t aid;
@@ -701,7 +701,7 @@ tool_read_attribute(char *strid)
 }
 
 /* Pretty print UCI data. */
-void
+static void
 tool_print_uci()
 {
 	int error;
