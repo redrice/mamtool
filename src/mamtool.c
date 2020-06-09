@@ -8,10 +8,7 @@
 #include <gc/gc.h>
 #include <utlist.h>
 
-#ifdef __linux__
-#include <byteswap.h>
-#endif
-
+#include "endian_utils.h"
 #include "uscsilib.h"
 
 #define CDB_OPCODE		0
@@ -233,44 +230,6 @@ attribute_set_value(struct mam_attribute *ma, uint8_t *buf)
 	memcpy(ma->value, buf+RDATTR_ATTRHEAD_LEN, ma->length);
 
 	return 0;
-}
-
-static inline uint16_t
-be16_to_host(uint16_t v)
-{
-if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-#ifdef __linux__
-	return bswap_16(v);
-#else
-	return bswap16(v);
-#endif
-else
-	return v;
-}
-
-static inline uint32_t
-be32_to_host(uint32_t v)
-{
-if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-#ifdef __linux__
-	return bswap_32(v);
-#else
-	return bswap32(v);
-#endif
-else
-	return v;
-}
-static inline uint64_t
-be64_to_host(uint64_t v)
-{
-if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-#ifdef __linux__
-	return bswap_64(v);
-#else
-	return bswap64(v);
-#endif
-else
-	return v;
 }
 
 static char const *

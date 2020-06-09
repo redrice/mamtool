@@ -3,8 +3,8 @@ LDFLAGS=-lgc -lbsd
 
 all : mamtool
 
-mamtool : mamtool.o uscsi_subr.o uscsi_sense.o
-	$(CC) $(LDFLAGS) -o $@ uscsi_sense.o mamtool.o uscsi_subr.o
+mamtool : endian_utils.o mamtool.o uscsi_subr.o uscsi_sense.o
+	$(CC) $(LDFLAGS) -o $@ endian_utils.o uscsi_sense.o mamtool.o uscsi_subr.o
 
 %.o : %.c *.h
 	$(CC) $(CFLAGS) -c $<
