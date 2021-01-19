@@ -41,3 +41,6 @@ UNIQUE CARTRIDGE IDENTITY (binary, 28 bytes, read-only): (...)
 ALTERNATIVE UNIQUE CARTRIDGE IDENTITY (binary, 24 bytes, read-only): (...)
 ```
 
+## Linux
+1) Install gc-devel & uthash-devel & gcc
+2) make -f Makefile.linux 
