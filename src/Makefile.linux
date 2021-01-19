@@ -1,5 +1,5 @@
 CFLAGS=-Wall -pedantic -g -DUSCSI_LINUX_SCSI -DSCSI -DNO_STRLCPY -I/usr/pkg/include
-LDFLAGS=-lgc -lbsd
+LDFLAGS=-lgc # -lbsd
 
 all : mamtool
 
