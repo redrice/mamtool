@@ -1,10 +1,10 @@
 CFLAGS=-Wall -pedantic -g -DUSCSI_LINUX_SCSI -DSCSI -DNO_STRLCPY -I/usr/pkg/include
-LDFLAGS=
+LD_SUFFIX_FLAGS=-lgc
 
 all : mamtool
 
 mamtool : endian_utils.o mamtool.o uscsi_subr.o uscsi_sense.o
-	$(CC) $(LDFLAGS) -o $@ endian_utils.o uscsi_sense.o mamtool.o uscsi_subr.o
+	$(CC) -o $@ endian_utils.o uscsi_sense.o mamtool.o uscsi_subr.o $(LD_SUFFIX_FLAGS)
 
 %.o : %.c *.h
 	$(CC) $(CFLAGS) -c $<
