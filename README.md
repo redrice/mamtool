@@ -44,9 +44,9 @@ ALTERNATIVE UNIQUE CARTRIDGE IDENTITY (binary, 24 bytes, read-only): (...)
 # Installation instructions
 
 ## NetBSD
-- Install `devel/boehm-gc`, `devel/uthash`
+- Install `devel/uthash`
 - Run `make`
 
 ## Linux (Red Hat-derived)
-- Install `gc-devel`, `uthash-devel`, `gcc`, `glibc-devel`, `make`
+- Install `uthash-devel`, `gcc`, `glibc-devel`, `make`
 - Run `make -f Makefile.linux`
