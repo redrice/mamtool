@@ -5,7 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <gc/gc.h>
+#include <stdlib.h>
 #include <utlist.h>
 
 #include "endian_utils.h"
@@ -33,7 +33,7 @@
 
 #define RDATTR_LISTHEAD_LEN	4	/* attribute list has 4 byte header */
 #define RDATTR_ATTRHEAD_LEN	5	/* every attribute has 5 byte header */
-#define RDATTR_HEADONLY_LEN	RDATTR_LISTHEAD_LEN+RDATTR_ATTRHEAD_LEN	
+#define RDATTR_HEADONLY_LEN	(RDATTR_LISTHEAD_LEN+RDATTR_ATTRHEAD_LEN)
 
 #define RDATTR_ATTRHEAD_ID_MSB		0
 #define RDATTR_ATTRHEAD_ID_LSB		1
@@ -58,7 +58,7 @@ struct mam_attribute {
 
 struct mam_attribute_definition {
 	uint16_t id;
-	uint16_t lenght;
+	uint16_t length;
 	uint8_t format;
 	const char* name;
 };
@@ -77,7 +77,8 @@ static const char *default_tape = "/dev/nst0";
 static const char *default_tape = "/dev/enrst0";
 #endif
 
-#define ATTR_DEF_NUM 50
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+
 static struct mam_attribute_definition attr_def[] = {
 
 	/* Device type attributes */
@@ -168,7 +169,7 @@ attribute_id_to_string(uint16_t id)
 #define UNKIDSTRLEN		50
 	static char unknownstr[UNKIDSTRLEN];
 
-	for (i = 0; i <= ATTR_DEF_NUM; i++) {
+	for (i = 0; i < ARRAY_SIZE(attr_def); i++) {
 		if (attr_def[i].id == id)
 			return attr_def[i].name;
 	}
@@ -219,7 +220,7 @@ attribute_set_value(struct mam_attribute *ma, uint8_t *buf)
 	    || (ma->format == ATTR_FMT_TEXT))
 		(vbuflen)++;
 
-	ma->value = GC_MALLOC(ma->length);
+	ma->value = malloc(vbuflen);
 
 	if (ma->value == NULL) {
 		fprintf(stderr, "Problem allocating memory for attribute.\n");
@@ -240,7 +241,11 @@ attribute_value_to_string(struct mam_attribute *ma)
 	char *avstr;
 
 	if ((ma->format) == ATTR_FMT_BINARY) {
-		avstr = GC_MALLOC(AVSTRLEN);
+		uint16_t v16;
+		uint32_t v32;
+		uint64_t v64;
+
+		avstr = malloc(AVSTRLEN);
 		memset(avstr, 0, AVSTRLEN);
 
 		switch (ma->length) {
@@ -248,13 +253,16 @@ attribute_value_to_string(struct mam_attribute *ma)
 			snprintf(avstr, AVSTRLEN, "%"PRIu8, *(ma->value));
 			break;
 		case 2:
-			snprintf(avstr, AVSTRLEN, "%"PRIu16, be16_to_host(*(uint16_t *)(ma->value)));
+			memcpy(&v16, ma->value, sizeof(v16));
+			snprintf(avstr, AVSTRLEN, "%"PRIu16, be16_to_host(v16));
 			break;
 		case 4:
-			snprintf(avstr, AVSTRLEN, "%"PRIu32, be32_to_host(*(uint32_t *)(ma->value)));
+			memcpy(&v32, ma->value, sizeof(v32));
+			snprintf(avstr, AVSTRLEN, "%"PRIu32, be32_to_host(v32));
 			break;
 		case 8:
-			snprintf(avstr, AVSTRLEN, "%"PRIu64, be64_to_host(*(uint64_t *)(ma->value)));
+			memcpy(&v64, ma->value, sizeof(v64));
+			snprintf(avstr, AVSTRLEN, "%"PRIu64, be64_to_host(v64));
 			break;
 		default: /* XXX */
 			cw = 0;
@@ -298,29 +306,40 @@ attribute_new(struct mam_attribute *ma, uint8_t *buf)
 }
 
 /*
- * Seralize the attribute to buffer that can be used with WRITE ATTRIBUTE
- * SCSI command.
+ * Serialize the attribute to buffer for WRITE ATTRIBUTE SCSI command.
+ * Per SPC-4: 4-byte parameter data length, then attribute entries
+ * (2-byte ID, 1-byte format, 2-byte length, then value).
  */
 void
 attribute_to_buffer(struct mam_attribute *ma, uint8_t *buf, uint32_t buflen)
 {
-	buf[3] = (uint8_t) buflen; //XXX
-	buf[4] = (ma->id >> 8) & 0xFF ;
-	buf[5] = ma->id & 0xFF;
-	buf[6] = ma->format;
-	buf[8] = (uint8_t) ma->length;
+	uint32_t param_data_len;
 
-	// XXX: handle null termination of source value
+	if (buflen < RDATTR_HEADONLY_LEN + ma->length) {
+		fprintf(stderr, "Buffer too small for attribute serialization.\n");
+		return;
+	}
 
-	// attribute to buf
-	// temporary PoC soluation
-	//snprintf((char *)(buf+RDATTR_HEADONLY_LEN), ma->length, "%s",
-	//    ma->value);
-	strncpy((char *)(buf+RDATTR_HEADONLY_LEN), (const char *) ma->value, (ma->length));
+	/* Parameter data length (bytes 0-3): total length after this field */
+	param_data_len = RDATTR_ATTRHEAD_LEN + ma->length;
+	buf[0] = (param_data_len >> 24) & 0xFF;
+	buf[1] = (param_data_len >> 16) & 0xFF;
+	buf[2] = (param_data_len >> 8) & 0xFF;
+	buf[3] = param_data_len & 0xFF;
+
+	/* Attribute header at offset RDATTR_LISTHEAD_LEN */
+	buf[RDATTR_LISTHEAD_LEN + RDATTR_ATTRHEAD_ID_MSB] = (ma->id >> 8) & 0xFF;
+	buf[RDATTR_LISTHEAD_LEN + RDATTR_ATTRHEAD_ID_LSB] = ma->id & 0xFF;
+	buf[RDATTR_LISTHEAD_LEN + RDATTR_ATTRHEAD_FORMAT] = ma->format;
+	buf[RDATTR_LISTHEAD_LEN + RDATTR_ATTRHEAD_ATTRLEN_MSB] = (ma->length >> 8) & 0xFF;
+	buf[RDATTR_LISTHEAD_LEN + RDATTR_ATTRHEAD_ATTRLEN_LSB] = ma->length & 0xFF;
+
+	/* Attribute value */
+	memcpy(buf + RDATTR_HEADONLY_LEN, ma->value, ma->length);
 }
 
 void
-uci_print_pretty(uint8_t *rawval) 
+uci_print_pretty(uint8_t *rawval)
 {
 	uint32_t ltocm_serial;
 	uint64_t pancake_id;
@@ -335,11 +354,12 @@ uci_print_pretty(uint8_t *rawval)
 	memcpy(&pancake_id, rawval, 8);
 	rawval += 8;
 	memcpy(manufacturer, rawval, 8);
+	manufacturer[8] = '\0';
 	rawval += 8;
 	memcpy(&lpos_lp1, rawval, 4);
 	rawval += 4;
 	memcpy(&cartridge_type, rawval, 2);
-	rawval += 4;
+	rawval += 2;
 
 	printf("%"PRIu32"\n", be32_to_host(ltocm_serial));
 	printf("%"PRIu64"\n", be64_to_host(pancake_id));
@@ -364,9 +384,10 @@ ucialt_print_pretty(uint8_t *rawval)
 	memcpy(&pancake_id, rawval, 8);
 	rawval += 8;
 	memcpy(serial, rawval, 10);
+	serial[10] = '\0';
 	rawval += 10;
 	memcpy(&cartridge_type, rawval, 2);
-	rawval += 4;
+	rawval += 2;
 
 	printf("%"PRIu32"\n", be32_to_host(ltocm_serial));
 	printf("%"PRIu64"\n", be64_to_host(pancake_id));
@@ -380,8 +401,10 @@ cdb_list_attributes(scsicmd *cmd, uint8_t state, uint32_t length)
 	memset(*cmd, 0, SCSI_CMD_LEN);
 
 	(*cmd)[CDB_OPCODE]		= OP_READ_ATTRIBUTE;
-	(*cmd)[CDB_RDATTR_SVCACTION]	= state;
-	/* XXX */
+	(*cmd)[CDB_RDATTR_SVCACTION]	= state & 0x1F;
+	(*cmd)[10]			= (length >> 24) & 0xFF;
+	(*cmd)[11]			= (length >> 16) & 0xFF;
+	(*cmd)[12]			= (length >> 8) & 0xFF;
 	(*cmd)[CDB_RDATTR_ALLOCLEN_LSB]	= length & 0xFF;
 }
 
@@ -393,7 +416,9 @@ cdb_read_attribute(scsicmd *cmd, uint16_t id, uint32_t length)
 	(*cmd)[CDB_OPCODE]		= OP_READ_ATTRIBUTE;
 	(*cmd)[CDB_RDATTR_ID_MSB]	= (id >> 8) & 0xFF;
 	(*cmd)[CDB_RDATTR_ID_LSB]	= id & 0xFF;
-	/* XXX */
+	(*cmd)[10]			= (length >> 24) & 0xFF;
+	(*cmd)[11]			= (length >> 16) & 0xFF;
+	(*cmd)[12]			= (length >> 8) & 0xFF;
 	(*cmd)[CDB_RDATTR_ALLOCLEN_LSB]	= length & 0xFF;
 }
 
@@ -403,7 +428,9 @@ cdb_write_attribute(scsicmd *cmd, uint16_t id, uint32_t length)
 	memset(*cmd, 0, SCSI_CMD_LEN);
 
 	(*cmd)[CDB_OPCODE]		= OP_WRITE_ATTRIBUTE;
-	/* XXX */
+	(*cmd)[10]			= (length >> 24) & 0xFF;
+	(*cmd)[11]			= (length >> 16) & 0xFF;
+	(*cmd)[12]			= (length >> 8) & 0xFF;
 	(*cmd)[CDB_WRATTR_PARAMLEN_LSB]	= length & 0xFF;
 }
 
@@ -416,7 +443,12 @@ mam_write_attribute_1(struct mam_attribute *ma)
 	scsicmd cmd;
 
 	buflen = RDATTR_HEADONLY_LEN+(ma->length);
-	buf = GC_MALLOC(buflen);
+	buf = malloc(buflen);
+	if (buf == NULL) {
+		fprintf(stderr, "Failed to allocate memory.\n");
+		return ENOMEM;
+	}
+	memset(buf, 0, buflen);
 
 	cdb_write_attribute(&cmd, ma->id, buflen);
 
@@ -424,7 +456,9 @@ mam_write_attribute_1(struct mam_attribute *ma)
 
 	error = uscsi_command(SCSI_WRITECMD, &dev, cmd, 16, buf,
 	    buflen, 10000, NULL);
-	
+
+	free(buf);
+
 	if (error)
 		return error;
 
@@ -439,25 +473,41 @@ mam_read_attribute_1(struct mam_attribute *ma, uint16_t id)
 	uint8_t *buf;
 	scsicmd cmd;
 
-	buf = GC_MALLOC(RDATTR_HEADONLY_LEN);
+	buf = malloc(RDATTR_HEADONLY_LEN);
+	if (buf == NULL) {
+		fprintf(stderr, "Failed to allocate memory.\n");
+		return ENOMEM;
+	}
+
 	cdb_read_attribute(&cmd, id, RDATTR_HEADONLY_LEN);
 	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
 	    RDATTR_HEADONLY_LEN, 10000, NULL);
-	
-	if (error)
+
+	if (error) {
+		free(buf);
 		return error;
+	}
 
 	attribute_new(ma, buf + RDATTR_LISTHEAD_LEN);
+	free(buf);
+
+	buf = malloc(RDATTR_HEADONLY_LEN+(ma->length));
+	if (buf == NULL) {
+		fprintf(stderr, "Failed to allocate memory.\n");
+		return ENOMEM;
+	}
 
 	cdb_read_attribute(&cmd, id, RDATTR_HEADONLY_LEN+(ma->length));
-	buf = GC_MALLOC(RDATTR_HEADONLY_LEN+(ma->length));
 	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
 	    RDATTR_HEADONLY_LEN+(ma->length), 10000, NULL);
 
-	if (error)
+	if (error) {
+		free(buf);
 		return error;
+	}
 
-	attribute_set_value(ma, buf + RDATTR_LISTHEAD_LEN);
+	error = attribute_set_value(ma, buf + RDATTR_LISTHEAD_LEN);
+	free(buf);
 
 	if (error)
 		return error;
@@ -477,25 +527,35 @@ mam_list_attribute_ids(struct mam_id_list **list, uint8_t state)
 	uint16_t i;
 	uint8_t *buf;
 	uint16_t *bp;
-	uint32_t bllen;
+	uint32_t bllen, bllen_be;
 	scsicmd cmd;
 
 	struct mam_id_list *lentry;
 
-	buf = GC_MALLOC(RDATTR_LISTHEAD_LEN);
-	assert(buf != NULL);
+	buf = malloc(RDATTR_LISTHEAD_LEN);
+	if (buf == NULL) {
+		fprintf(stderr, "Failed to allocate memory.\n");
+		return ENOMEM;
+	}
 
 	cdb_list_attributes(&cmd, state, RDATTR_LISTHEAD_LEN);
 	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
 	    RDATTR_LISTHEAD_LEN, 10000, NULL);
 
-	if (error)
+	if (error) {
+		free(buf);
 		return error;
+	}
 
-	bllen = be32_to_host(*((uint32_t *) buf));
+	memcpy(&bllen_be, buf, sizeof(bllen_be));
+	bllen = be32_to_host(bllen_be);
+	free(buf);
 
-	buf = GC_MALLOC(RDATTR_LISTHEAD_LEN+bllen);
-	assert (buf != NULL);
+	buf = malloc(RDATTR_LISTHEAD_LEN+bllen);
+	if (buf == NULL) {
+		fprintf(stderr, "Failed to allocate memory.\n");
+		return ENOMEM;
+	}
 
 	cdb_list_attributes(&cmd, state, RDATTR_LISTHEAD_LEN+bllen);
 	error = uscsi_command(SCSI_READCMD, &dev, cmd, 16, buf,
@@ -504,11 +564,16 @@ mam_list_attribute_ids(struct mam_id_list **list, uint8_t state)
 	bp = (uint16_t *)(buf+RDATTR_LISTHEAD_LEN);
 
 	for (i = 0; i < bllen/2; i++) {
-		lentry = GC_MALLOC(sizeof(struct mam_id_list));
-		assert(lentry != NULL);
+		lentry = malloc(sizeof(struct mam_id_list));
+		if (lentry == NULL) {
+			fprintf(stderr, "Failed to allocate memory.\n");
+			free(buf);
+			return ENOMEM;
+		}
 		lentry->id = be16_to_host(*(bp+i));
 		LL_APPEND(*list, lentry);
 	}
+	free(buf);
 
 	if (error)
 		return error;
@@ -594,10 +659,12 @@ tool_dump_attributes()
 
 	LL_FOREACH(aid_list, aid_entry) {
 		error = mam_read_attribute_1(&ma, aid_entry->id);
-//		printf("id %x error %d\n", aid_entry->id, error);
-		assert(error == 0); // XXX
-		if (error == 0)
-			attribute_print_simple(&ma);
+		if (error != 0) {
+			fprintf(stderr, "Warning: failed to read attribute "
+			    "0x%x: %s\n", aid_entry->id, strerror(error));
+			continue;
+		}
+		attribute_print_simple(&ma);
 	}
 }
 
@@ -610,16 +677,22 @@ tool_write_attribute(char *strid, char *strformat, char *strvalue)
 
 	errno = 0;
 	ma.id = (uint16_t) strtoul(strid, &ae, 0);
-	assert(*ae == '\0');
-	assert(errno == 0);
+	if (*ae != '\0' || errno != 0) {
+		fprintf(stderr, "Invalid attribute ID: %s\n", strid);
+		exit(EXIT_FAILURE);
+	}
 
 	ma.format = (uint8_t) strtoul(strformat, &ae, 0);
-	assert(*ae == '\0');
-	assert(errno == 0);
+	if (*ae != '\0' || errno != 0) {
+		fprintf(stderr, "Invalid attribute format: %s\n", strformat);
+		exit(EXIT_FAILURE);
+	}
 
 	ma.length = strlen(strvalue);
 
-	printf("format %x, len of value %s is: %lx\n", ma.format, strvalue, strlen(strvalue));
+	if (f_verbose)
+		printf("format %x, len of value %s is: %lx\n", ma.format,
+		    strvalue, strlen(strvalue));
 
 	ma.value = (uint8_t *) strvalue;
 	attribute_print_value(&ma);
@@ -645,8 +718,10 @@ tool_read_attribute(char *strid)
 
 	errno = 0;
 	aid = (uint16_t) strtoul(strid, &ae, 0);
-	assert(*ae == '\0');
-	assert(errno == 0);
+	if (*ae != '\0' || errno != 0) {
+		fprintf(stderr, "Invalid attribute ID: %s\n", strid);
+		exit(EXIT_FAILURE);
+	}
 
 	error = mam_read_attribute_1(&ma, aid);
 	if (error != 0) {
@@ -705,21 +780,20 @@ main(int argc, char *argv[])
 	const char *exec_name;
 	char *dev_name;
 
-	int flag = 0 ;
+	int flag = 0;
+	int n_ops = 0;
 	int f_dump_attrs = 0;
 	int f_read_attr = 0;
 	int f_write_attr = 0;
 	int f_uciprint = 0;
 
-	GC_INIT();
-
 #if defined(_NETBSD_SOURCE)
 	exec_name = getprogname();
 #else
-	exec_name = GC_STRDUP(argv[0]);
+	exec_name = strdup(argv[0]);
 #endif
 
-	dev_name = GC_STRDUP(default_tape);
+	dev_name = strdup(default_tape);
 
 	if (argc < 2) {
 		usage(exec_name);
@@ -732,7 +806,8 @@ main(int argc, char *argv[])
 				f_dump_attrs = 1;
 				break;
 			case 'f':
-				dev_name = GC_STRDUP(optarg);
+				free(dev_name);
+				dev_name = strdup(optarg);
 				break;
 			case 'r':
 				f_read_attr = 1;
@@ -747,6 +822,13 @@ main(int argc, char *argv[])
 				f_verbose = 1;
 				break;
 		}
+	}
+
+	n_ops = f_dump_attrs + f_read_attr + f_write_attr + f_uciprint;
+	if (n_ops != 1) {
+		fprintf(stderr, "Specify exactly one of -L, -r, -w, -u.\n");
+		usage(exec_name);
+		exit(EXIT_FAILURE);
 	}
 
 	argv += optind;
@@ -765,22 +847,16 @@ main(int argc, char *argv[])
 
 	if (f_dump_attrs) {
 		tool_dump_attributes();
-	}
-
-	if (f_uciprint) {
+	} else if (f_uciprint) {
 		tool_print_uci();
-	}
-
-	if (f_read_attr) {
+	} else if (f_read_attr) {
 		if (argc < 1) {
 			usage(exec_name);
 			exit(EXIT_FAILURE);
 		}
 
 		tool_read_attribute(argv[0]);
-	}
-
-	if (f_write_attr) {
+	} else if (f_write_attr) {
 		if (argc < 3) {
 			usage(exec_name);
 			exit(EXIT_FAILURE);

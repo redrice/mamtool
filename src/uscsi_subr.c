@@ -143,10 +143,11 @@ uscsi_command(int flags, struct uscsi_dev *disc,
 		return EBUSY;
 	} else if (req.retsts == SCCMD_SENSE) {
 		if (uscsi_sense) {
+			uscsi_sense->sense_key  =  req.sense[2] & 0x0F;
 			uscsi_sense->asc        =  req.sense[12];
 			uscsi_sense->ascq       =  req.sense[13];
-			uscsi_sense->skey_valid =  req.sense[15] & 128;
-			uscsi_sense->sense_key  = (req.sense[16] << 8) |
+			uscsi_sense->sks_valid  =  req.sense[15] & 128;
+			uscsi_sense->sks_value  = (req.sense[16] << 8) |
 						  (req.sense[17]);
 		}
 		if (uscsilib_verbose)
@@ -302,10 +303,11 @@ uscsi_command(int flags, struct uscsi_dev *disc,
 	if (req.status) {
 		/* Is this OK? */
 		if (uscsi_sense) {
+			uscsi_sense->sense_key  =  sense_buffer[2] & 0x0F;
 			uscsi_sense->asc        =  sense_buffer[12];
 			uscsi_sense->ascq       =  sense_buffer[13];
-			uscsi_sense->skey_valid =  sense_buffer[15] & 128;
-			uscsi_sense->sense_key  = (sense_buffer[16] << 8) |
+			uscsi_sense->sks_valid  =  sense_buffer[15] & 128;
+			uscsi_sense->sks_value  = (sense_buffer[16] << 8) |
 						  (sense_buffer[17]);
 		}
 		if (uscsilib_verbose) {
@@ -469,11 +471,12 @@ uscsi_command(int flags, struct uscsi_dev *disc,
 	/* print sense info */
 	cam_sense_data = &ccb.csio.sense_data;
 	if (uscsi_sense) {
+		uscsi_sense->sense_key = cam_sense_data->flags & 0x0F;
 		uscsi_sense->asc  = cam_sense_data->add_sense_code;
 		uscsi_sense->ascq = cam_sense_data->add_sense_code_qual;
 		keypos  = cam_sense_data->sense_key_spec;
-		uscsi_sense->skey_valid =  keypos[0] & 128;
-		uscsi_sense->sense_key  = (keypos[1] << 8) | (keypos[2]);
+		uscsi_sense->sks_valid =  keypos[0] & 128;
+		uscsi_sense->sks_value = (keypos[1] << 8) | (keypos[2]);
 	}
 
 	uscsi_print_sense((char *) disc->dev_name,
@@ -571,7 +574,7 @@ uscsi_request_sense(struct uscsi_dev *dev, void *buf, size_t len)
 	cmd[ 4] = len;			/* length of data to be read	*/
 	cmd[ 5] = 0;			/* control			*/
 
-	return uscsi_command(SCSI_WRITECMD, dev, &cmd, 6, buf, len,
+	return uscsi_command(SCSI_READCMD, dev, &cmd, 6, buf, len,
 			10000, NULL);
 }
 

@@ -75,9 +75,10 @@ struct  uscsi_addr {
 
 struct uscsi_sense {
 	int asc;		/* Additional sense code */
-	int ascq;		/* Additional sense code quality */
-	int skey_valid;		/* sense key valid */
-	int sense_key;		/* sense key; interpret on (asc, ascq) pair */
+	int ascq;		/* Additional sense code qualifier */
+	int sense_key;		/* sense key (byte 2, bits 3:0) */
+	int sks_valid;		/* sense key specific valid (byte 15, bit 7) */
+	int sks_value;		/* sense key specific value (bytes 16-17) */
 };
 
 
