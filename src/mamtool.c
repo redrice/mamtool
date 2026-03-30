@@ -79,6 +79,78 @@ static const char *default_tape = "/dev/enrst0";
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
+#define TAPEALERT_FLAGS_ATTR_ID	0x0002
+#define TAPEALERT_NUM_FLAGS	64
+
+#define TAPEALERT_SEV_CRITICAL	'C'
+#define TAPEALERT_SEV_WARNING	'W'
+#define TAPEALERT_SEV_INFO	'I'
+
+/*
+ * TapeAlert flag definitions for tape drive/autoloader devices.
+ * Per TapeAlert Specification v3.0 (T10/02-142r0).
+ * Index 0 corresponds to flag 1, index 63 to flag 64.
+ */
+static const struct {
+	const char *name;
+	char severity;		/* C, W, I or 0 if undefined */
+} tapealert_flags[TAPEALERT_NUM_FLAGS] = {
+	[0]  = { "Read Warning",			TAPEALERT_SEV_WARNING },
+	[1]  = { "Write Warning",			TAPEALERT_SEV_WARNING },
+	[2]  = { "Hard Error",				TAPEALERT_SEV_WARNING },
+	[3]  = { "Media",				TAPEALERT_SEV_CRITICAL },
+	[4]  = { "Read Failure",			TAPEALERT_SEV_CRITICAL },
+	[5]  = { "Write Failure",			TAPEALERT_SEV_CRITICAL },
+	[6]  = { "Media Life",				TAPEALERT_SEV_WARNING },
+	[7]  = { "Not Data Grade",			TAPEALERT_SEV_WARNING },
+	[8]  = { "Write Protect",			TAPEALERT_SEV_CRITICAL },
+	[9]  = { "No Removal",				TAPEALERT_SEV_INFO },
+	[10] = { "Cleaning Media",			TAPEALERT_SEV_INFO },
+	[11] = { "Unsupported Format",			TAPEALERT_SEV_INFO },
+	[12] = { "Recoverable Snapped Tape",		TAPEALERT_SEV_CRITICAL },
+	[13] = { "Unrecoverable Snapped Tape",		TAPEALERT_SEV_CRITICAL },
+	[14] = { "Memory Chip in Cartridge Failure",	TAPEALERT_SEV_WARNING },
+	[15] = { "Forced Eject",			TAPEALERT_SEV_CRITICAL },
+	[16] = { "Read Only Format",			TAPEALERT_SEV_WARNING },
+	[17] = { "Tape Directory Corrupted on Load",	TAPEALERT_SEV_WARNING },
+	[18] = { "Nearing Media Life",			TAPEALERT_SEV_INFO },
+	[19] = { "Clean Now",				TAPEALERT_SEV_CRITICAL },
+	[20] = { "Clean Periodic",			TAPEALERT_SEV_WARNING },
+	[21] = { "Expired Cleaning Media",		TAPEALERT_SEV_CRITICAL },
+	[22] = { "Invalid Cleaning Tape",		TAPEALERT_SEV_CRITICAL },
+	[23] = { "Retention Requested",			TAPEALERT_SEV_WARNING },
+	[24] = { "Dual-Port Interface Error",		TAPEALERT_SEV_WARNING },
+	[25] = { "Cooling Fan Failure",			TAPEALERT_SEV_WARNING },
+	[26] = { "Power Supply",			TAPEALERT_SEV_WARNING },
+	[27] = { "Power Consumption",			TAPEALERT_SEV_WARNING },
+	[28] = { "Drive Maintenance",			TAPEALERT_SEV_WARNING },
+	[29] = { "Hardware A",				TAPEALERT_SEV_CRITICAL },
+	[30] = { "Hardware B",				TAPEALERT_SEV_CRITICAL },
+	[31] = { "Interface",				TAPEALERT_SEV_WARNING },
+	[32] = { "Eject Media",			TAPEALERT_SEV_CRITICAL },
+	[33] = { "Download Fail",			TAPEALERT_SEV_WARNING },
+	[34] = { "Drive Humidity",			TAPEALERT_SEV_WARNING },
+	[35] = { "Drive Temperature",			TAPEALERT_SEV_WARNING },
+	[36] = { "Drive Voltage",			TAPEALERT_SEV_WARNING },
+	[37] = { "Predictive Failure",			TAPEALERT_SEV_CRITICAL },
+	[38] = { "Diagnostics Required",		TAPEALERT_SEV_WARNING },
+	[39] = { "Loader Hardware A",			TAPEALERT_SEV_CRITICAL },
+	[40] = { "Loader Stray Tape",			TAPEALERT_SEV_CRITICAL },
+	[41] = { "Loader Hardware B",			TAPEALERT_SEV_WARNING },
+	[42] = { "Loader Door",			TAPEALERT_SEV_CRITICAL },
+	[43] = { "Loader Hardware C",			TAPEALERT_SEV_CRITICAL },
+	[44] = { "Loader Magazine",			TAPEALERT_SEV_CRITICAL },
+	[45] = { "Loader Predictive Failure",		TAPEALERT_SEV_WARNING },
+	/* 47-49: reserved */
+	[49] = { "Lost Statistics",			TAPEALERT_SEV_WARNING },
+	[50] = { "Tape Directory Invalid at Unload",	TAPEALERT_SEV_WARNING },
+	[51] = { "Tape System Area Write Failure",	TAPEALERT_SEV_CRITICAL },
+	[52] = { "Tape System Area Read Failure",	TAPEALERT_SEV_CRITICAL },
+	[53] = { "No Start of Data",			TAPEALERT_SEV_CRITICAL },
+	/* 55-63: reserved */
+	/* 64: reserved */
+};
+
 static struct mam_attribute_definition attr_def[] = {
 
 	/* Device type attributes */
@@ -277,10 +349,44 @@ attribute_value_to_string(struct mam_attribute *ma)
 	return avstr;
 }
 
+static void
+tapealert_print_flags(uint8_t *value, uint16_t length)
+{
+	uint64_t flags_be, flags;
+	int i, count;
+
+	if (length != 8)
+		return;
+
+	memcpy(&flags_be, value, sizeof(flags_be));
+	flags = be64_to_host(flags_be);
+
+	if (flags == 0) {
+		printf("  No TapeAlert flags set.\n");
+		return;
+	}
+
+	count = 0;
+	for (i = 0; i < TAPEALERT_NUM_FLAGS; i++) {
+		if (!(flags & ((uint64_t)1 << (63 - i))))
+			continue;
+		count++;
+		if (tapealert_flags[i].name != NULL)
+			printf("  Flag %2d [%c]: %s\n",
+			    i + 1, tapealert_flags[i].severity,
+			    tapealert_flags[i].name);
+		else
+			printf("  Flag %2d [?]: Reserved/Unknown\n", i + 1);
+	}
+	printf("  %d flag(s) set.\n", count);
+}
+
 static inline void
 attribute_print_value(struct mam_attribute *ma)
 {
 	printf("%s\n", attribute_value_to_string(ma));
+	if (ma->id == TAPEALERT_FLAGS_ATTR_ID)
+		tapealert_print_flags(ma->value, ma->length);
 }
 
 static inline void
@@ -293,6 +399,8 @@ attribute_print_simple(struct mam_attribute *ma)
 		ma->length,
 		attribute_ro_to_string(ma->ro),
 		attribute_value_to_string(ma));
+	if (ma->id == TAPEALERT_FLAGS_ATTR_ID)
+		tapealert_print_flags(ma->value, ma->length);
 }
 
 void
